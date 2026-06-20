@@ -1,0 +1,6 @@
+{
+  "name": "Block Blast Clone",
+  "description": "A block puzzle game replica with drag and drop mechanics, combos, and sound effects.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
