@@ -6,9 +6,54 @@ import { cn } from '../utils/cn';
 import { GRID_SIZE } from '../constants';
 import { motion, AnimatePresence } from 'motion/react';
 import { sound } from '../utils/soundEngine';
+import { safeStorage } from '../utils/safeStorage';
 
 import { AnimatedScore } from './AnimatedScore';
 import { LevelUpModal } from './LevelUpModal';
+
+const GridCell = React.memo<{
+  rI: number;
+  cI: number;
+  isClearing: boolean;
+  isPreviewClearing: boolean;
+  isGhost: boolean;
+  ghostColor: string | null;
+  isPlaced: boolean;
+  isBombHover: boolean | null;
+  isHintTarget: boolean | null;
+  isFilled: boolean;
+  colorClass: string | null;
+  onPointerEnter: (r: number, c: number) => void;
+  onClick: (r: number, c: number) => void;
+}>(({
+  rI, cI, isClearing, isPreviewClearing, isGhost, ghostColor, isPlaced,
+  isBombHover, isHintTarget, isFilled, colorClass, onPointerEnter, onClick
+}) => {
+  return (
+    <div 
+      onPointerEnter={() => onPointerEnter(rI, cI)}
+      onClick={() => onClick(rI, cI)}
+      className={cn(
+        "w-full h-full rounded-[2px] transition-all duration-200 relative",
+        isFilled && colorClass ? colorClass + ' block-cell' : 'grid-cell-empty',
+        isGhost && !isFilled && `${ghostColor} block-cell opacity-50`,
+        isPreviewClearing && (isFilled || isGhost) && 'preview-clear',
+        isClearing && 'clearing-anim opacity-0', // it glows and vanishes
+        isBombHover && 'bg-red-500/50 scale-105 z-10 block-cell',
+        isHintTarget && 'bg-yellow-400/50 animate-pulse block-cell'
+      )}
+    >
+      {isPlaced && (
+        <div className="particle-container">
+           <div className="particle" style={{ left: '-2px', top: '-2px', '--tx': '-10px', '--ty': '-10px' } as React.CSSProperties} />
+           <div className="particle" style={{ right: '-2px', top: '-2px', '--tx': '10px', '--ty': '-10px' } as React.CSSProperties} />
+           <div className="particle" style={{ left: '-2px', bottom: '-2px', '--tx': '-10px', '--ty': '10px' } as React.CSSProperties} />
+           <div className="particle" style={{ right: '-2px', bottom: '-2px', '--tx': '10px', '--ty': '10px' } as React.CSSProperties} />
+        </div>
+      )}
+    </div>
+  );
+});
 
 type Props = {
   onOpenSettings: () => void;
@@ -44,7 +89,7 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
   const [bombHoverPos, setBombHoverPos] = useState<{r: number, c: number} | null>(null);
 
   const [tutorialStep, setTutorialStep] = useState(() => {
-    return localStorage.getItem('block_blast_tutorial_done') ? 0 : 1;
+    return safeStorage.getItem('block_blast_tutorial_done') ? 0 : 1;
   });
 
   const [isHomeModalOpen, setIsHomeModalOpen] = useState(false);
@@ -60,7 +105,7 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
       setTutorialStep(3);
       setTimeout(() => {
         setTutorialStep(0);
-        localStorage.setItem('block_blast_tutorial_done', 'true');
+        safeStorage.setItem('block_blast_tutorial_done', 'true');
       }, 3000);
     }
   }, [clearingRows, clearingCols, tutorialStep]);
@@ -95,6 +140,26 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
       if (timeoutId) clearTimeout(timeoutId);
     };
   }, [isGameOverStatus, score, highScore, onGameOver]);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+        import('../utils/firebase').then(({ db, currentUser }) => {
+            if (currentUser) {
+                import('firebase/firestore').then(({ doc, setDoc }) => {
+                    const username = safeStorage.getItem('block_blast_username');
+                    if (username) {
+                        setDoc(doc(db, "users", currentUser.uid), {
+                            username,
+                            score,
+                            updatedAt: new Date().toISOString()
+                        }, { merge: true });
+                    }
+                });
+            }
+        });
+    }, 2000);
+    return () => clearTimeout(handler);
+  }, [score]);
 
   useEffect(() => {
     const handlePointerMove = (e: PointerEvent) => {
@@ -277,7 +342,7 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
      }
   };
 
-  const handleCellClick = (r: number, c: number) => {
+  const handleCellClick = React.useCallback((r: number, c: number) => {
      if (activePowerUp === 'bomb') {
         if (spendCoins(150)) {
            triggerBomb(r, c);
@@ -288,13 +353,19 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
         setActivePowerUp(null);
         setBombHoverPos(null);
      }
-  };
+  }, [activePowerUp, spendCoins, triggerBomb]);
+
+  const handleCellPointerEnter = React.useCallback((r: number, c: number) => {
+    if (activePowerUp === 'bomb') {
+      setBombHoverPos({ r, c });
+    }
+  }, [activePowerUp]);
 
   const handleShapeClick = (index: number, e: React.PointerEvent) => {
      if (activePowerUp === 'replace' && availableShapes[index]) {
         if (spendCoins(80)) {
            rerollShape(index);
-           sound.playDrop();
+           sound.playPlace();
         } else {
            sound.playError?.();
         }
@@ -382,7 +453,7 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
           <div className="relative">
             <div 
               ref={gridRef}
-              className="bg-[#1C2759] p-1.5 rounded-lg grid gap-[1px] w-full aspect-square shadow-[0_10px_30px_rgba(0,0,0,0.5)] border border-[#2A3771]"
+              className="bg-[#1C2759] p-1.5 rounded-lg grid gap-[1px] w-full aspect-square shadow-[0_10px_30px_rgba(0,0,0,0.5)] border border-[#2A3771] touch-none"
               style={{
                 gridTemplateColumns: `repeat(${GRID_SIZE}, minmax(0, 1fr))`,
                 gridTemplateRows: `repeat(${GRID_SIZE}, minmax(0, 1fr))`
@@ -397,32 +468,27 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
                   const isPlaced = placedCoords.some(c => c.r === rI && c.c === cI);
                   
                   const isBombHover = bombHoverPos && Math.abs(bombHoverPos.r - rI) <= 1 && Math.abs(bombHoverPos.c - cI) <= 1;
-                  const isHintTarget = hintCoords && hintCoords.r <= rI && hintCoords.r + (availableShapes[hintCoords.shapeIndex]?.matrix.length || 0) > rI && hintCoords.c <= cI && hintCoords.c + (availableShapes[hintCoords.shapeIndex]?.matrix[0].length || 0) > cI && availableShapes[hintCoords.shapeIndex]?.matrix[rI - hintCoords.r][cI - hintCoords.c] === 1;
+                 const shapeShape = hintCoords ? availableShapes[hintCoords.shapeIndex]?.matrix : null;
+                 
+                  const isHintTarget = hintCoords && hintCoords.r <= rI && hintCoords.r + (shapeShape?.length || 0) > rI && hintCoords.c <= cI && hintCoords.c + (shapeShape?.[0]?.length || 0) > cI && shapeShape?.[rI - hintCoords.r][cI - hintCoords.c] === 1;
 
                   return (
-                    <div 
+                    <GridCell
                       key={`${rI}-${cI}`}
-                      onPointerEnter={() => activePowerUp === 'bomb' && setBombHoverPos({ r: rI, c: cI })}
-                      onClick={() => handleCellClick(rI, cI)}
-                      className={cn(
-                        "w-full h-full rounded-[2px] transition-all duration-200 relative",
-                        cell.isFilled && cell.colorClass ? cell.colorClass + ' block-cell' : 'grid-cell-empty',
-                        isGhost && !cell.isFilled && `${ghost.color} block-cell opacity-50`,
-                        isPreviewClearing && (cell.isFilled || isGhost) && 'preview-clear',
-                        isClearing && 'clearing-anim opacity-0', // it glows and vanishes
-                        isBombHover && 'bg-red-500/50 scale-105 z-10 block-cell',
-                        isHintTarget && 'bg-yellow-400/50 animate-pulse block-cell'
-                      )}
-                    >
-                      {isPlaced && (
-                        <div className="particle-container">
-                           <div className="particle" style={{ left: '-2px', top: '-2px', '--tx': '-10px', '--ty': '-10px' } as React.CSSProperties} />
-                           <div className="particle" style={{ right: '-2px', top: '-2px', '--tx': '10px', '--ty': '-10px' } as React.CSSProperties} />
-                           <div className="particle" style={{ left: '-2px', bottom: '-2px', '--tx': '-10px', '--ty': '10px' } as React.CSSProperties} />
-                           <div className="particle" style={{ right: '-2px', bottom: '-2px', '--tx': '10px', '--ty': '10px' } as React.CSSProperties} />
-                        </div>
-                      )}
-                    </div>
+                      rI={rI}
+                      cI={cI}
+                      isFilled={cell.isFilled}
+                      colorClass={cell.colorClass}
+                      isClearing={isClearing}
+                      isPreviewClearing={isPreviewClearing}
+                      isGhost={isGhost}
+                      ghostColor={ghost?.color || null}
+                      isPlaced={isPlaced}
+                      isBombHover={isBombHover}
+                      isHintTarget={isHintTarget}
+                      onPointerEnter={handleCellPointerEnter}
+                      onClick={handleCellClick}
+                    />
                   );
                 })
               )}
@@ -505,7 +571,7 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
                     {shape && (
                       <div 
                         className={cn(
-                          "transition-opacity duration-200 cursor-grab active:cursor-grabbing", 
+                          "transition-opacity duration-200 cursor-grab active:cursor-grabbing touch-none", 
                           dragState?.index === idx ? 'opacity-0' : 'opacity-100'
                         )}
                         onPointerDown={(e) => handleShapeClick(idx, e)}
@@ -557,17 +623,29 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-40 pointer-events-none flex flex-col items-center justify-center bg-black/40"
           >
-            <div className="absolute top-[35%] bg-blue-500 text-white font-bold px-6 py-3 rounded-full shadow-lg border-2 border-white text-xl animate-pulse">
-              Drag a shape to the board!
-            </div>
-            {/* Animated Hand */}
+            {/* Animated Hand & Shape */}
             <motion.div
-              initial={{ y: 250, scale: 1 }}
-              animate={{ y: [250, 250, 0, 0, 250], scale: [1, 0.9, 0.9, 1, 1], x: [0, 0, -50, -50, 0] }}
+              initial={{ y: 250, x: 0 }}
+              animate={{ y: [250, 250, 0, 0, 250] }}
               transition={{ repeat: Infinity, duration: 3, ease: 'easeInOut' }}
-              className="absolute top-[40%] text-white"
+              className="absolute top-[40%] flex flex-col items-center text-white"
             >
-              <Hand className="w-16 h-16 fill-white drop-shadow-2xl" />
+              <motion.div
+                animate={{ scale: [1, 1.2, 1.2, 1, 1], opacity: [0, 1, 1, 0, 0] }}
+                transition={{ repeat: Infinity, duration: 3, ease: 'easeInOut' }}
+                className="mb-1 grid grid-cols-2 gap-[1px] bg-white/20 p-[1px] rounded"
+              >
+                  <div className="w-6 h-6 bg-cyan-400 rounded-[2px]" />
+                  <div className="w-6 h-6 bg-cyan-400 rounded-[2px]" />
+                  <div className="w-6 h-6 bg-cyan-400 rounded-[2px]" />
+                  <div className="w-6 h-6 bg-cyan-400 rounded-[2px]" />
+              </motion.div>
+              <motion.div
+                 animate={{ scale: [1, 0.9, 0.9, 1, 1] }}
+                 transition={{ repeat: Infinity, duration: 3, ease: 'easeInOut' }}
+              >
+                <Hand className="w-16 h-16 fill-white drop-shadow-[0_10px_20px_rgba(0,0,0,0.8)]" />
+              </motion.div>
             </motion.div>
           </motion.div>
         )}
@@ -577,11 +655,26 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-40 pointer-events-none flex flex-col items-center justify-center bg-black/40"
+            className="fixed inset-0 z-40 pointer-events-none flex items-center justify-center bg-black/40"
           >
-            <div className="absolute top-[35%] bg-purple-500 text-white font-bold px-6 py-3 rounded-full shadow-lg border-2 border-white text-xl text-center">
-              Fill a complete row or column <br/> to blast blocks!
-            </div>
+            {/* Visual indication of a line blast */}
+            <motion.div
+              className="relative w-full max-w-[300px] h-16 flex border-2 border-white/20 rounded-lg p-1 gap-1"
+            >
+               {[0, 1, 2, 3, 4, 5, 6].map(i => (
+                  <motion.div 
+                     key={i}
+                     className="flex-1 bg-yellow-400 rounded-sm"
+                     animate={{ opacity: [1, 1, 0, 0, 1], scale: [1, 1, 1.2, 0, 1] }}
+                     transition={{ repeat: Infinity, duration: 3, delay: i * 0.05 }}
+                  />
+               ))}
+               <motion.div
+                 className="absolute inset-0 bg-white shadow-[0_0_50px_rgba(255,255,255,0.8)] rounded-lg"
+                 animate={{ opacity: [0, 0, 1, 0, 0] }}
+                 transition={{ repeat: Infinity, duration: 3 }}
+               />
+            </motion.div>
           </motion.div>
         )}
 

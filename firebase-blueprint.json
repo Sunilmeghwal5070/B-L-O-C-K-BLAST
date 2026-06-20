@@ -1,0 +1,42 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with high score and stats",
+      "type": "object",
+      "properties": {
+        "username": { "type": "string" },
+        "score": { "type": "number" },
+        "coins": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["username", "score"]
+    },
+    "Friendship": {
+      "title": "Friendship",
+      "description": "Friend request and friendship status between two users",
+      "type": "object",
+      "properties": {
+        "users": { "type": "array", "items": { "type": "string" } },
+        "senderId": { "type": "string" },
+        "receiverId": { "type": "string" },
+        "senderUsername": { "type": "string" },
+        "receiverUsername": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "accepted"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["users", "senderId", "receiverId", "senderUsername", "receiverUsername", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Stores user profiles linked by Firebase Auth UID"
+    },
+    "friendships/{friendshipId}": {
+       "schema": { "$ref": "#/entities/Friendship" },
+       "description": "Stores friendship records and requests"
+    }
+  }
+}

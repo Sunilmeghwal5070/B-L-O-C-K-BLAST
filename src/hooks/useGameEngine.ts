@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { GridCellData, ShapeDef, Pos, PopupText } from '../types';
 import { SHAPES_LIBRARY, GRID_SIZE } from '../constants';
+import { safeStorage } from '../utils/safeStorage';
 
 const createEmptyGrid = (): GridCellData[][] =>
   Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill({ isFilled: false, colorClass: null }));
@@ -25,14 +26,14 @@ export const getLevelProgress = (score: number) => {
 export function useGameEngine() {
   const [grid, setGrid] = useState<GridCellData[][]>(() => {
 
-    const saved = localStorage.getItem('block_blast_save');
+    const saved = safeStorage.getItem('block_blast_save');
     if (saved) {
       try { return JSON.parse(saved).grid; } catch (e) {}
     }
     return createEmptyGrid();
   });
   const [score, setScore] = useState(() => {
-    const saved = localStorage.getItem('block_blast_save');
+    const saved = safeStorage.getItem('block_blast_save');
     if (saved) {
       try { return JSON.parse(saved).score; } catch (e) {}
     }
@@ -40,7 +41,7 @@ export function useGameEngine() {
   });
   const [highScore, setHighScore] = useState(0);
   const [availableShapes, setAvailableShapes] = useState<(ShapeDef | null)[]>(() => {
-    const saved = localStorage.getItem('block_blast_save');
+    const saved = safeStorage.getItem('block_blast_save');
     if (saved) {
       try { return JSON.parse(saved).availableShapes; } catch (e) {}
     }
@@ -54,12 +55,12 @@ export function useGameEngine() {
   const [placedCoords, setPlacedCoords] = useState<{r: number, c: number}[]>([]);
 
   const [coins, setCoins] = useState(() => {
-    const saved = localStorage.getItem('block_blast_coins');
+    const saved = safeStorage.getItem('block_blast_coins');
     return saved ? parseInt(saved, 10) : 0;
   });
 
   const [currentLevel, setCurrentLevel] = useState(() => {
-    const saved = localStorage.getItem('block_blast_save');
+    const saved = safeStorage.getItem('block_blast_save');
     let startScore = 0;
     if (saved) {
       try { startScore = JSON.parse(saved).score; } catch (e) {}
@@ -71,10 +72,10 @@ export function useGameEngine() {
 
   // Initialize
   useEffect(() => {
-    const savedHighScore = localStorage.getItem('block_blast_high_score');
+    const savedHighScore = safeStorage.getItem('block_blast_high_score');
     if (savedHighScore) setHighScore(parseInt(savedHighScore, 10));
     
-    const saved = localStorage.getItem('block_blast_save');
+    const saved = safeStorage.getItem('block_blast_save');
     if (!saved) {
       generateNewShapes();
     } else {
@@ -93,7 +94,7 @@ export function useGameEngine() {
   // Save to local storage on change
   useEffect(() => {
     if (initialized && !isGameOverStatus) {
-        localStorage.setItem('block_blast_save', JSON.stringify({
+        safeStorage.setItem('block_blast_save', JSON.stringify({
             grid,
             score,
             availableShapes
@@ -110,7 +111,7 @@ export function useGameEngine() {
        const rewardCoins = 50;
        setCoins(c => {
          const newCoins = c + rewardCoins;
-         localStorage.setItem('block_blast_coins', newCoins.toString());
+         safeStorage.setItem('block_blast_coins', newCoins.toString());
          return newCoins;
        });
        
@@ -127,7 +128,7 @@ export function useGameEngine() {
   const saveHighScore = (newScore: number) => {
     if (newScore > highScore) {
       setHighScore(newScore);
-      localStorage.setItem('block_blast_high_score', newScore.toString());
+      safeStorage.setItem('block_blast_high_score', newScore.toString());
     }
   };
 
@@ -201,7 +202,7 @@ export function useGameEngine() {
         if (!checkAnyFits(availableShapes, grid)) {
            if (!isGameOverStatus) {
               setIsGameOverStatus(true);
-              localStorage.removeItem('block_blast_save');
+              safeStorage.removeItem('block_blast_save');
            }
         } else {
            if (isGameOverStatus) {
@@ -215,7 +216,7 @@ export function useGameEngine() {
     if (coins >= amount) {
       setCoins(c => {
         const newCoins = c - amount;
-        localStorage.setItem('block_blast_coins', newCoins.toString());
+        safeStorage.setItem('block_blast_coins', newCoins.toString());
         return newCoins;
       });
       return true;
@@ -399,7 +400,7 @@ export function useGameEngine() {
        const newTotalScore = prevScore + earnedScore;
        setHighScore(prevHS => {
            const max = Math.max(prevHS, newTotalScore);
-           localStorage.setItem('block_blast_high_score', max.toString());
+           safeStorage.setItem('block_blast_high_score', max.toString());
            return max;
        });
        return newTotalScore;
@@ -414,7 +415,7 @@ export function useGameEngine() {
     setComboCount(0);
     setIsGameOverStatus(false);
     setCurrentLevel(1);
-    localStorage.removeItem('block_blast_save');
+    safeStorage.removeItem('block_blast_save');
     generateNewShapes();
   }
 

@@ -1,7 +1,10 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Crown, Play, Settings, ShoppingCart, Gift, User, Info, ListTree, PlaySquare, X } from 'lucide-react';
+import { Crown, Play, Settings, ShoppingCart, Gift, User, Info, ListTree, PlaySquare, X, Trophy, Users } from 'lucide-react';
 import { sound } from '../utils/soundEngine';
+import { LeaderboardModal } from './LeaderboardModal';
+import { FriendsModal } from './FriendsModal';
+import { safeStorage } from '../utils/safeStorage';
 
 type Props = {
   onStart: () => void;
@@ -11,10 +14,11 @@ type Props = {
 export const MenuScreen: React.FC<Props> = ({ onStart, onOpenSettings }) => {
   const [activeModal, setActiveModal] = useState<string | null>(null);
   
-  const [coins, setCoins] = useState(() => parseInt(localStorage.getItem('block_blast_coins') || '0', 10));
-  const [lastClaimed, setLastClaimed] = useState(() => localStorage.getItem('block_blast_last_claim') || '');
-  const [hasNeonTheme, setHasNeonTheme] = useState(() => localStorage.getItem('block_blast_theme') === 'neon');
-  const [hasNoAds, setHasNoAds] = useState(() => localStorage.getItem('block_blast_no_ads') === 'true');
+  const [coins, setCoins] = useState(() => parseInt(safeStorage.getItem('block_blast_coins') || '0', 10));
+  const [lastClaimed, setLastClaimed] = useState(() => safeStorage.getItem('block_blast_last_claim') || '');
+  const [hasNeonTheme, setHasNeonTheme] = useState(() => safeStorage.getItem('block_blast_theme') === 'neon');
+  const [hasNoAds, setHasNoAds] = useState(() => safeStorage.getItem('block_blast_no_ads') === 'true');
+  const sessionUsername = safeStorage.getItem('block_blast_username') || '@guest';
 
   const today = new Date().toDateString();
   const canClaim = lastClaimed !== today;
@@ -34,19 +38,19 @@ export const MenuScreen: React.FC<Props> = ({ onStart, onOpenSettings }) => {
         const newCoins = coins + 50;
         setCoins(newCoins);
         setLastClaimed(today);
-        localStorage.setItem('block_blast_coins', String(newCoins));
-        localStorage.setItem('block_blast_last_claim', today);
+        safeStorage.setItem('block_blast_coins', String(newCoins));
+        safeStorage.setItem('block_blast_last_claim', today);
      }
   };
 
   const buyNeonTheme = () => {
      if (hasNeonTheme) {
         sound.playPlace();
-        if (localStorage.getItem('block_blast_theme') === 'neon') {
-           localStorage.setItem('block_blast_theme', 'default');
+        if (safeStorage.getItem('block_blast_theme') === 'neon') {
+           safeStorage.setItem('block_blast_theme', 'default');
            document.body.classList.remove('neon-theme');
         } else {
-           localStorage.setItem('block_blast_theme', 'neon');
+           safeStorage.setItem('block_blast_theme', 'neon');
            document.body.classList.add('neon-theme');
         }
         return;
@@ -57,30 +61,18 @@ export const MenuScreen: React.FC<Props> = ({ onStart, onOpenSettings }) => {
         const newCoins = coins - 200;
         setCoins(newCoins);
         setHasNeonTheme(true);
-        localStorage.setItem('block_blast_coins', String(newCoins));
-        localStorage.setItem('block_blast_theme', 'neon');
+        safeStorage.setItem('block_blast_coins', String(newCoins));
+        safeStorage.setItem('block_blast_theme', 'neon');
         document.body.classList.add('neon-theme');
      } else {
         sound.playClick();
      }
   };
 
-  const hoverNeonTheme = () => {
-      if(hasNeonTheme) {
-          localStorage.setItem('block_blast_theme', 'neon');
-          document.body.classList.add('neon-theme');
-      }
-  };
-
-  const removeNeonTheme = () => {
-      localStorage.setItem('block_blast_theme', 'default');
-      document.body.classList.remove('neon-theme');
-  };
-
   const buyNoAds = () => {
       sound.playPlace();
       setHasNoAds(true);
-      localStorage.setItem('block_blast_no_ads', 'true');
+      safeStorage.setItem('block_blast_no_ads', 'true');
   };
 
   return (
@@ -131,13 +123,14 @@ export const MenuScreen: React.FC<Props> = ({ onStart, onOpenSettings }) => {
           </div>
 
           {/* Grid Menu Actions */}
-          <div className="flex flex-wrap justify-center gap-4 w-full relative z-10 pb-4">
+          <div className="flex flex-wrap justify-center gap-3 w-full relative z-10 pb-4">
               {[
+                { icon: Trophy, label: 'Leaders', color: 'from-yellow-400 to-orange-500' },
+                { icon: Users, label: 'Friends', color: 'from-indigo-400 to-blue-600' },
                 { icon: ShoppingCart, label: 'Store', color: 'from-purple-400 to-purple-600' },
                 { icon: Gift, label: 'Rewards', color: 'from-pink-400 to-pink-600' },
                 { icon: User, label: 'Profile', color: 'from-cyan-400 to-cyan-600' },
                 { icon: Settings, label: 'Settings', color: 'from-gray-500 to-gray-700' },
-                { icon: Info, label: 'About', color: 'from-teal-400 to-teal-600' },
               ].map((btn, i) => (
                  <motion.div 
                    key={i}
@@ -146,15 +139,21 @@ export const MenuScreen: React.FC<Props> = ({ onStart, onOpenSettings }) => {
                    className={`bg-gradient-to-br ${btn.color} rounded-2xl flex flex-col items-center justify-center p-3 shadow-lg border border-white/20 active:translate-y-1 transition-all cursor-pointer w-[30%]`}
                    onClick={() => handleMenuClick(btn.label)}
                  >
-                    <btn.icon className="w-7 h-7 text-white mb-1 drop-shadow-md" />
-                    <span className="text-xs font-bold text-white drop-shadow-md">{btn.label}</span>
+                    <btn.icon className="w-6 h-6 text-white mb-1 drop-shadow-md" />
+                    <span className="text-[10px] sm:text-xs font-bold text-white drop-shadow-md">{btn.label}</span>
                  </motion.div>
               ))}
           </div>
       </div>
 
       <AnimatePresence>
-        {activeModal && (
+        {activeModal === 'Leaders' && (
+          <LeaderboardModal onClose={() => setActiveModal(null)} />
+        )}
+        {activeModal === 'Friends' && (
+          <FriendsModal onClose={() => setActiveModal(null)} />
+        )}
+        {activeModal && activeModal !== 'Leaders' && activeModal !== 'Friends' && (
           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-6">
              <motion.div 
                initial={{ scale: 0.9, opacity: 0 }}
@@ -235,19 +234,28 @@ export const MenuScreen: React.FC<Props> = ({ onStart, onOpenSettings }) => {
 
                    {activeModal === 'Profile' && (
                      <div className="flex flex-col items-center gap-4 w-full">
-                        <div className="w-20 h-20 bg-gradient-to-br from-cyan-400 to-blue-500 rounded-full flex items-center justify-center border-4 border-[#2A3771] shadow-lg">
+                        <div className="w-20 h-20 bg-gradient-to-br from-cyan-400 to-blue-500 rounded-full flex items-center justify-center border-4 border-[#2A3771] shadow-lg relative">
                            <User className="w-10 h-10 text-white" />
+                           <div className="absolute -bottom-2 -right-2 bg-yellow-400 rounded-full p-1 border-2 border-[#1C2759]">
+                              <Crown className="w-4 h-4 text-[#1C2759]" />
+                           </div>
                         </div>
-                        <h3 className="text-xl text-white font-bold">Guest_1084</h3>
+                        <h3 className="text-xl text-white font-bold">{sessionUsername}</h3>
                         
                         <div className="w-full grid grid-cols-2 gap-3 mt-4">
-                           <div className="bg-[#141b3d] p-3 rounded-xl border border-[#2A3771] flex flex-col items-center">
-                              <span className="text-xs text-blue-300 font-semibold uppercase">High Score</span>
-                              <span className="text-2xl font-black text-yellow-400">{localStorage.getItem('block_blast_high_score') || 0}</span>
+                           <div className="bg-[#141b3d] p-3 rounded-xl border border-[#2A3771] flex flex-col items-center justify-center relative overflow-hidden">
+                              <div className="absolute right-[-10px] top-[-10px] opacity-10">
+                                 <Crown className="w-16 h-16 text-yellow-400" />
+                              </div>
+                              <span className="text-[10px] text-blue-300 font-bold uppercase tracking-wider">High Score</span>
+                              <span className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-b from-yellow-300 to-yellow-600">{safeStorage.getItem('block_blast_high_score') || 0}</span>
                            </div>
-                           <div className="bg-[#141b3d] p-3 rounded-xl border border-[#2A3771] flex flex-col items-center">
-                              <span className="text-xs text-blue-300 font-semibold uppercase">Coins</span>
-                              <span className="text-2xl font-black text-white">{coins}</span>
+                           <div className="bg-[#141b3d] p-3 rounded-xl border border-[#2A3771] flex flex-col items-center justify-center relative overflow-hidden">
+                              <div className="absolute right-[-10px] top-[-10px] opacity-10">
+                                 <Crown className="w-16 h-16 text-yellow-400" />
+                              </div>
+                              <span className="text-[10px] text-blue-300 font-bold uppercase tracking-wider">Total Coins</span>
+                              <span className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-b from-white to-gray-400">{coins}</span>
                            </div>
                         </div>
                      </div>
@@ -275,4 +283,5 @@ export const MenuScreen: React.FC<Props> = ({ onStart, onOpenSettings }) => {
     </motion.div>
   );
 };
+
 

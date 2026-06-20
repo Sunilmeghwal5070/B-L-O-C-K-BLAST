@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { X, Volume2, VolumeX, Music, Smartphone, Palette, Gem, Lock } from 'lucide-react';
 import { sound } from '../utils/soundEngine';
 import { cn } from '../utils/cn';
+import { safeStorage } from '../utils/safeStorage';
 
 type Props = {
   onClose: () => void;
@@ -28,25 +29,25 @@ export const SettingsModal: React.FC<Props> = ({ onClose }) => {
   const [bgm, setBgm] = React.useState(sound.bgmEnabled);
   
   const [coins, setCoins] = useState(() => {
-    return parseInt(localStorage.getItem('block_blast_coins') || '0', 10);
+    return parseInt(safeStorage.getItem('block_blast_coins') || '0', 10);
   });
 
   const [unlockedThemes, setUnlockedThemes] = useState<string[]>(() => {
-    const saved = localStorage.getItem('block_blast_unlocked_themes');
+    const saved = safeStorage.getItem('block_blast_unlocked_themes');
     return saved ? JSON.parse(saved) : ['default'];
   });
 
   const [currentTheme, setCurrentTheme] = useState(() => {
-    return localStorage.getItem('block_blast_theme') || 'default';
+    return safeStorage.getItem('block_blast_theme') || 'default';
   });
   
   const [unlockedBlockStyles, setUnlockedBlockStyles] = useState<string[]>(() => {
-    const saved = localStorage.getItem('block_blast_unlocked_bstyles');
+    const saved = safeStorage.getItem('block_blast_unlocked_bstyles');
     return saved ? JSON.parse(saved) : ['default'];
   });
 
   const [currentBlockStyle, setCurrentBlockStyle] = useState(() => {
-    return localStorage.getItem('block_blast_bstyle') || 'default';
+    return safeStorage.getItem('block_blast_bstyle') || 'default';
   });
   
   const toggleSfx = () => {
@@ -81,18 +82,18 @@ export const SettingsModal: React.FC<Props> = ({ onClose }) => {
     sound.playClick();
     if (unlockedThemes.includes(themeId)) {
         setCurrentTheme(themeId);
-        localStorage.setItem('block_blast_theme', themeId);
+        safeStorage.setItem('block_blast_theme', themeId);
         updateBodyClasses(themeId, currentBlockStyle);
     } else if (coins >= cost) {
         const newCoins = coins - cost;
         setCoins(newCoins);
-        localStorage.setItem('block_blast_coins', newCoins.toString());
+        safeStorage.setItem('block_blast_coins', newCoins.toString());
         const newUnlocked = [...unlockedThemes, themeId];
         setUnlockedThemes(newUnlocked);
-        localStorage.setItem('block_blast_unlocked_themes', JSON.stringify(newUnlocked));
+        safeStorage.setItem('block_blast_unlocked_themes', JSON.stringify(newUnlocked));
         
         setCurrentTheme(themeId);
-        localStorage.setItem('block_blast_theme', themeId);
+        safeStorage.setItem('block_blast_theme', themeId);
         updateBodyClasses(themeId, currentBlockStyle);
     }
   };
@@ -101,18 +102,18 @@ export const SettingsModal: React.FC<Props> = ({ onClose }) => {
     sound.playClick();
     if (unlockedBlockStyles.includes(styleId)) {
         setCurrentBlockStyle(styleId);
-        localStorage.setItem('block_blast_bstyle', styleId);
+        safeStorage.setItem('block_blast_bstyle', styleId);
         updateBodyClasses(currentTheme, styleId);
     } else if (coins >= cost) {
         const newCoins = coins - cost;
         setCoins(newCoins);
-        localStorage.setItem('block_blast_coins', newCoins.toString());
+        safeStorage.setItem('block_blast_coins', newCoins.toString());
         const newUnlocked = [...unlockedBlockStyles, styleId];
         setUnlockedBlockStyles(newUnlocked);
-        localStorage.setItem('block_blast_unlocked_bstyles', JSON.stringify(newUnlocked));
+        safeStorage.setItem('block_blast_unlocked_bstyles', JSON.stringify(newUnlocked));
         
         setCurrentBlockStyle(styleId);
-        localStorage.setItem('block_blast_bstyle', styleId);
+        safeStorage.setItem('block_blast_bstyle', styleId);
         updateBodyClasses(currentTheme, styleId);
     }
   };

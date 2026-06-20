@@ -1,8 +1,10 @@
+import { safeStorage } from './safeStorage';
+
 class SoundEngine {
   private ctx: AudioContext | null = null;
-  public soundEnabled = localStorage.getItem('block_blast_sound') !== 'false';
-  public vibrationEnabled = localStorage.getItem('block_blast_vibration') !== 'false';
-  public bgmEnabled = localStorage.getItem('block_blast_bgm') !== 'false';
+  public soundEnabled = safeStorage.getItem('block_blast_sound') !== 'false';
+  public vibrationEnabled = safeStorage.getItem('block_blast_vibration') !== 'false';
+  public bgmEnabled = safeStorage.getItem('block_blast_bgm') !== 'false';
   
   private bgmInterval: number | null = null;
   private initialized = false;
@@ -28,17 +30,17 @@ class SoundEngine {
 
   setSoundEnabled(enabled: boolean) {
      this.soundEnabled = enabled;
-     localStorage.setItem('block_blast_sound', String(enabled));
+     safeStorage.setItem('block_blast_sound', String(enabled));
   }
   
   setVibrationEnabled(enabled: boolean) {
      this.vibrationEnabled = enabled;
-     localStorage.setItem('block_blast_vibration', String(enabled));
+     safeStorage.setItem('block_blast_vibration', String(enabled));
   }
   
   setBGMEnabled(enabled: boolean) {
      this.bgmEnabled = enabled;
-     localStorage.setItem('block_blast_bgm', String(enabled));
+     safeStorage.setItem('block_blast_bgm', String(enabled));
      if (enabled && this.ctx) {
         this.startBGM();
      } else {
