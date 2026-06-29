@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Crown, Settings as SettingsIcon, Hand, Home, RefreshCw, Bomb, Lightbulb, Gem, Lock } from 'lucide-react';
+import { Crown, Settings as SettingsIcon, Hand, Home, RefreshCw, Bomb, Lightbulb, Gem, Lock, RotateCcw } from 'lucide-react';
 import { useGameEngine, getLevelProgress } from '../hooks/useGameEngine';
 import { PreviewShape } from './PreviewShape';
 import { cn } from '../utils/cn';
@@ -9,7 +9,54 @@ import { sound } from '../utils/soundEngine';
 import { safeStorage } from '../utils/safeStorage';
 
 import { AnimatedScore } from './AnimatedScore';
-import { LevelUpModal } from './LevelUpModal';
+
+const RollingNumber = ({ value }: { value: number }) => {
+  const [displayValue, setDisplayValue] = useState(value);
+  
+  useEffect(() => {
+    let start = displayValue;
+    const end = value;
+    if (start === end) return;
+    
+    const duration = 800; // ms
+    const startTime = performance.now();
+    
+    const update = (now: number) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const current = Math.floor(start + (end - start) * progress);
+      
+      setDisplayValue(current);
+      
+      if (progress < 1) {
+        requestAnimationFrame(update);
+      }
+    };
+    
+    requestAnimationFrame(update);
+  }, [value]);
+  
+  return <span>{displayValue}</span>;
+};
+
+const FlyingCoin = ({ startPos, endPos, onComplete }: { startPos: {x: number, y: number}, endPos: {x: number, y: number}, onComplete: () => void }) => {
+   return (
+      <motion.div
+         initial={{ x: startPos.x, y: startPos.y, scale: 0, opacity: 1 }}
+         animate={{ 
+            x: [startPos.x, startPos.x + (Math.random() - 0.5) * 100, endPos.x], 
+            y: [startPos.y, startPos.y - 100, endPos.y],
+            scale: [0, 1.5, 0.8, 1],
+            opacity: [1, 1, 0.8, 0]
+         }}
+         transition={{ duration: 1.2, ease: "easeOut" }}
+         onAnimationComplete={onComplete}
+         className="fixed z-[100] pointer-events-none"
+      >
+         <Gem className="w-5 h-5 text-fuchsia-400 drop-shadow-[0_0_8px_rgba(192,38,211,0.6)] fill-fuchsia-500" />
+      </motion.div>
+   );
+};
 
 const GridCell = React.memo<{
   rI: number;
@@ -36,11 +83,11 @@ const GridCell = React.memo<{
       className={cn(
         "w-full h-full rounded-[2px] transition-all duration-200 relative",
         isFilled && colorClass ? colorClass + ' block-cell' : 'grid-cell-empty',
-        isGhost && !isFilled && `${ghostColor} block-cell opacity-50`,
+        isGhost && !isFilled && `${ghostColor} block-cell opacity-80 scale-[0.98]`,
         isPreviewClearing && (isFilled || isGhost) && 'preview-clear',
         isClearing && 'clearing-anim opacity-0', // it glows and vanishes
         isBombHover && 'bg-red-500/50 scale-105 z-10 block-cell',
-        isHintTarget && 'bg-yellow-400/50 animate-pulse block-cell'
+        isHintTarget && 'hint-blink-anim block-cell'
       )}
     >
       {isPlaced && (
@@ -66,7 +113,7 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
     grid, score, highScore, availableShapes, popups,
     clearingRows, clearingCols, comboCount, isGameOverStatus,
     placedCoords, currentLevel, coins, levelUpData, setLevelUpData,
-    spendCoins, triggerBomb, rerollShape, getHint,
+    spendCoins, triggerBomb, triggerReverse, rerollShape, getHint,
     placeShape, checkAnyFits, checkFits, resetGame
   } = useGameEngine();
 
@@ -93,6 +140,22 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
   });
 
   const [isHomeModalOpen, setIsHomeModalOpen] = useState(false);
+  const [flyingCoins, setFlyingCoins] = useState<{id: number}[]>([]);
+  
+  const coinBalRef = useRef<HTMLDivElement>(null);
+  const progressBarRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (levelUpData) {
+       // Trigger coin flight
+       sound.playClear();
+       const newCoins = Array.from({ length: 12 }).map((_, i) => ({ id: Date.now() + i }));
+       setFlyingCoins(newCoins);
+       
+       // Auto-clear level up message/effect after a bit
+       setTimeout(() => setLevelUpData(null), 3000);
+    }
+  }, [levelUpData, setLevelUpData]);
 
   useEffect(() => {
     if (tutorialStep === 1 && score > 0) {
@@ -168,11 +231,10 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
       
       pointerPosRef.current = { x: e.clientX, y: e.clientY };
       const { index } = dragState;
-      const DRAG_OFFSET_Y = 100;
 
       // Update floating element directly to bypass React render for extreme smoothness
       if (floatingShapeRef.current) {
-         floatingShapeRef.current.style.transform = `translate3d(${e.clientX}px, ${e.clientY - DRAG_OFFSET_Y}px, 0)`;
+         floatingShapeRef.current.style.transform = `translate3d(${e.clientX}px, ${e.clientY}px, 0)`;
       }
 
       if (gridRef.current) {
@@ -184,7 +246,7 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
         const cellH = rect.height / GRID_SIZE;
 
         const pieceCX = e.clientX;
-        const pieceCY = e.clientY - DRAG_OFFSET_Y;
+        const pieceCY = e.clientY;
 
         const relX = pieceCX - rect.left;
         const relY = pieceCY - rect.top;
@@ -220,17 +282,19 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
       const currX = pointerPosRef.current.x;
       const currY = pointerPosRef.current.y;
       
-      let dropGridPos = hoverGridPos;
+      let dropGridPos: { gridX: number, gridY: number } | null = null;
 
       // Ensure synchronously accurate position
-      if (gridRectRef.current) {
+      if (gridRef.current) {
+        if (!gridRectRef.current) {
+           gridRectRef.current = gridRef.current.getBoundingClientRect();
+        }
         const rect = gridRectRef.current;
         const cellW = rect.width / GRID_SIZE;
         const cellH = rect.height / GRID_SIZE;
-        const DRAG_OFFSET_Y = 100;
         
         const pieceCX = currX;
-        const pieceCY = currY - DRAG_OFFSET_Y;
+        const pieceCY = currY;
         const relX = pieceCX - rect.left;
         const relY = pieceCY - rect.top;
 
@@ -245,8 +309,6 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
                const gridY = Math.round(exactRow - rows / 2);
                dropGridPos = { gridX, gridY };
             }
-        } else {
-            dropGridPos = null;
         }
       }
       
@@ -254,7 +316,11 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
          const success = placeShape(index, dropGridPos.gridX, dropGridPos.gridY, currX, currY);
          if (success) {
             sound.playPlace();
+         } else {
+            sound.playDeselect();
          }
+      } else {
+         sound.playDeselect();
       }
       
       setDragState(null);
@@ -270,7 +336,7 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
       document.removeEventListener('pointermove', handlePointerMove);
       document.removeEventListener('pointerup', handlePointerUp);
     };
-  }, [dragState, availableShapes, placeShape, hoverGridPos]);
+  }, [dragState, availableShapes, placeShape]);
 
   // Hook into clears for immediate sound
   useEffect(() => {
@@ -334,7 +400,7 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
              if (spendCoins(50)) {
                  setHintCoords(hint);
                  sound.playClick();
-                 setTimeout(() => setHintCoords(null), 3000);
+                 setTimeout(() => setHintCoords(null), 1800);
              }
          }
      } else {
@@ -344,7 +410,7 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
 
   const handleCellClick = React.useCallback((r: number, c: number) => {
      if (activePowerUp === 'bomb') {
-        if (spendCoins(150)) {
+        if (spendCoins(50)) {
            triggerBomb(r, c);
            sound.playClear();
         } else {
@@ -363,7 +429,7 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
 
   const handleShapeClick = (index: number, e: React.PointerEvent) => {
      if (activePowerUp === 'replace' && availableShapes[index]) {
-        if (spendCoins(80)) {
+        if (spendCoins(50)) {
            rerollShape(index);
            sound.playPlace();
         } else {
@@ -376,8 +442,20 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
      if (activePowerUp) return; // Prevent drag if other powerup is active
 
      e.preventDefault();
+     sound.playSelect?.();
      pointerPosRef.current = { x: e.clientX, y: e.clientY };
      setDragState({ index, startX: e.clientX, startY: e.clientY });
+  };
+
+  const handleReverseClick = () => {
+    if (currentLevel < 4) return;
+    if (spendCoins(50)) {
+       if (!triggerReverse()) {
+          sound.playError();
+       }
+    } else {
+       sound.playError();
+    }
   };
   
   // Clean up bomb hover
@@ -395,9 +473,11 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
              <Crown className="w-5 h-5 text-yellow-400 drop-shadow-md" />
              <span className="text-lg font-bold text-yellow-500 drop-shadow-md">{highScore}</span>
            </div>
-           <div className="flex items-center gap-1">
+           <div ref={coinBalRef} className="flex items-center gap-1">
              <Gem className="w-5 h-5 text-fuchsia-400 drop-shadow-md" />
-             <span className="text-lg font-bold text-fuchsia-400 drop-shadow-md">{coins}</span>
+             <div className="text-lg font-bold text-fuchsia-400 drop-shadow-md">
+                <RollingNumber value={coins} />
+             </div>
            </div>
         </div>
         <div className="flex gap-2">
@@ -424,7 +504,7 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
                       <span className="bg-blue-600 px-2 py-0.5 rounded-full text-white">Lv {currentLevel}</span>
                       <span>{score} / {progress.totalRequiredForNextLevel}</span>
                    </div>
-                   <div className="w-full h-2.5 bg-black/40 rounded-full overflow-hidden shadow-inner">
+                   <div ref={progressBarRef} className="w-full h-2.5 bg-black/40 rounded-full overflow-hidden shadow-inner relative">
                       <motion.div 
                         className="h-full bg-gradient-to-r from-yellow-400 to-orange-500 rounded-full"
                         initial={{ width: 0 }}
@@ -432,7 +512,47 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
                         transition={{ duration: 0.3 }}
                       />
                    </div>
-                 </>
+                   {levelUpData && (
+                         <AnimatePresence>
+                            <motion.div
+                              initial={{ y: 20, opacity: 0, scale: 0.5 }}
+                              animate={{ y: -85, opacity: 1, scale: 1 }}
+                              exit={{ opacity: 0, y: -130, scale: 0.8 }}
+                              className="absolute top-0 left-1/2 -translate-x-1/2 flex flex-col items-center z-[110]"
+                            >
+                               <motion.div 
+                                 animate={{ 
+                                    rotate: [0, -5, 5, -5, 0],
+                                    scale: [1, 1.1, 1, 1.1, 1]
+                                 }}
+                                 transition={{ repeat: Infinity, duration: 2 }}
+                                 className="bg-gradient-to-b from-yellow-300 via-orange-400 to-orange-600 p-0.5 rounded-2xl shadow-[0_0_25px_rgba(245,158,11,0.6)]"
+                               >
+                                  <div className="bg-slate-900 px-5 py-3 rounded-[14px] flex flex-col items-center border border-white/20">
+                                     <span className="text-yellow-400 font-black text-sm uppercase tracking-widest mb-1 drop-shadow-[0_0_8px_rgba(250,204,21,0.4)] whitespace-nowrap">LEVEL UP!</span>
+                                     <div className="flex items-center gap-2">
+                                        <div className="flex items-center gap-1 bg-white/10 px-2 py-0.5 rounded-full border border-white/5">
+                                           <Gem className="w-4 h-4 text-fuchsia-400 fill-fuchsia-400/20" />
+                                           <span className="text-white font-black text-xl">+50</span>
+                                        </div>
+                                     </div>
+                                     {levelUpData.unlock && (
+                                        <div className="mt-1 text-[10px] text-white/60 font-bold uppercase tracking-tighter">
+                                           {levelUpData.unlock} Unlocked!
+                                        </div>
+                                     )}
+                                  </div>
+                               </motion.div>
+                               {/* Arrow connecting to progress bar */}
+                               <motion.div 
+                                 animate={{ y: [0, 5, 0] }}
+                                 transition={{ repeat: Infinity, duration: 1 }}
+                                 className="w-0 h-0 border-l-[10px] border-l-transparent border-r-[10px] border-r-transparent border-t-[10px] border-t-orange-600 mt-[-2px] drop-shadow-lg"
+                               />
+                            </motion.div>
+                         </AnimatePresence>
+                      )}
+                  </>
                );
             })()}
          </div>
@@ -443,9 +563,19 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
 
       {/* Rest of the UI below (Grid, Pieces, Popups) */}
       <AnimatePresence>
-         {levelUpData && (
-            <LevelUpModal data={levelUpData} onClose={() => setLevelUpData(null)} />
-         )}
+         {flyingCoins.map((coin) => {
+            if (!coinBalRef.current || !progressBarRef.current) return null;
+            const startRect = progressBarRef.current.getBoundingClientRect();
+            const endRect = coinBalRef.current.getBoundingClientRect();
+            return (
+               <FlyingCoin 
+                  key={coin.id}
+                  startPos={{ x: startRect.left + startRect.width/2, y: startRect.top }}
+                  endPos={{ x: endRect.left, y: endRect.top }}
+                  onComplete={() => setFlyingCoins(prev => prev.filter(c => c.id !== coin.id))}
+               />
+            );
+         })}
       </AnimatePresence>
       <div className="relative w-full max-w-[400px] flex-1 flex flex-col justify-end gap-10">
           
@@ -517,24 +647,11 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
           {/* Power Ups */}
           <div className="w-full max-w-[400px] flex justify-center gap-4 mt-1 mb-[-15px] z-10">
              <button 
-               onClick={() => currentLevel >= 2 ? (activePowerUp === 'bomb' ? setActivePowerUp(null) : setActivePowerUp('bomb')) : null}
-               className={cn("flex items-center justify-center gap-1 px-3 py-1.5 rounded-full border-2 transition-all shadow-md group relative", activePowerUp === 'bomb' ? "bg-red-500/40 border-red-400 scale-[1.05]" : "bg-black/30 border-black/50 hover:bg-black/40", currentLevel < 2 && "opacity-50 grayscale")}
+               onClick={() => currentLevel >= 3 ? (activePowerUp === 'bomb' ? setActivePowerUp(null) : setActivePowerUp('bomb')) : null}
+               className={cn("flex items-center justify-center gap-1 px-3 py-1.5 rounded-full border-2 transition-all shadow-md group relative", activePowerUp === 'bomb' ? "bg-red-500/40 border-red-400 scale-[1.05]" : "bg-black/30 border-black/50 hover:bg-black/40", currentLevel < 3 && "opacity-50 grayscale")}
              >
-                {currentLevel < 2 && <div className="absolute -top-1 -right-1 bg-red-600 rounded-full p-0.5"><Lock className="w-3 h-3 text-white" /></div>}
+                {currentLevel < 3 && <div className="absolute -top-1 -right-1 bg-red-600 rounded-full p-0.5"><Lock className="w-3 h-3 text-white" /></div>}
                 <Bomb className={cn("w-4 h-4 drop-shadow-lg", activePowerUp === 'bomb' ? "text-red-400 fill-red-500/20 animate-pulse" : "text-gray-300")} />
-                {currentLevel >= 2 ? (
-                   <div className="flex items-center font-bold"><span className="text-xs text-white">150</span><Gem className="w-3 h-3 ml-0.5 text-fuchsia-400"/></div>
-                ) : (
-                   <span className="text-[10px] font-bold text-white/70 uppercase">Lvl 2</span>
-                )}
-             </button>
-
-             <button 
-               onClick={() => currentLevel >= 3 ? handleHintClick() : null}
-               className={cn("flex items-center justify-center gap-1 px-3 py-1.5 rounded-full border-2 transition-all shadow-md group bg-black/30 border-black/50 hover:bg-black/40 relative", currentLevel < 3 && "opacity-50 grayscale")}
-             >
-                {currentLevel < 3 && <div className="absolute -top-1 -right-1 bg-yellow-600 rounded-full p-0.5"><Lock className="w-3 h-3 text-white" /></div>}
-                <Lightbulb className={cn("w-4 h-4 drop-shadow-lg", hintCoords ? "text-yellow-400 fill-yellow-500/20 animate-pulse" : "text-gray-300")} />
                 {currentLevel >= 3 ? (
                    <div className="flex items-center font-bold"><span className="text-xs text-white">50</span><Gem className="w-3 h-3 ml-0.5 text-fuchsia-400"/></div>
                 ) : (
@@ -543,15 +660,36 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
              </button>
 
              <button 
-               onClick={() => currentLevel >= 4 ? (activePowerUp === 'replace' ? setActivePowerUp(null) : setActivePowerUp('replace')) : null}
-               className={cn("flex items-center justify-center gap-1 px-3 py-1.5 rounded-full border-2 transition-all shadow-md group relative", activePowerUp === 'replace' ? "bg-blue-500/40 border-blue-400 scale-[1.05]" : "bg-black/30 border-black/50 hover:bg-black/40", currentLevel < 4 && "opacity-50 grayscale")}
+               onClick={() => handleHintClick()}
+               className={cn("flex items-center justify-center gap-1 px-3 py-1.5 rounded-full border-2 transition-all shadow-md group bg-black/30 border-black/50 hover:bg-black/40 relative")}
              >
-                {currentLevel < 4 && <div className="absolute -top-1 -right-1 bg-blue-600 rounded-full p-0.5"><Lock className="w-3 h-3 text-white" /></div>}
+                <Lightbulb className={cn("w-4 h-4 drop-shadow-lg", hintCoords ? "text-yellow-400 fill-yellow-500/20 animate-pulse" : "text-gray-300")} />
+                <div className="flex items-center font-bold"><span className="text-xs text-white">50</span><Gem className="w-3 h-3 ml-0.5 text-fuchsia-400"/></div>
+             </button>
+
+             <button 
+               onClick={() => currentLevel >= 2 ? (activePowerUp === 'replace' ? setActivePowerUp(null) : setActivePowerUp('replace')) : null}
+               className={cn("flex items-center justify-center gap-1 px-3 py-1.5 rounded-full border-2 transition-all shadow-md group relative", activePowerUp === 'replace' ? "bg-blue-500/40 border-blue-400 scale-[1.05]" : "bg-black/30 border-black/50 hover:bg-black/40", currentLevel < 2 && "opacity-50 grayscale")}
+             >
+                {currentLevel < 2 && <div className="absolute -top-1 -right-1 bg-blue-600 rounded-full p-0.5"><Lock className="w-3 h-3 text-white" /></div>}
                 <RefreshCw className={cn("w-4 h-4 drop-shadow-lg", activePowerUp === 'replace' ? "text-blue-400 animate-[spin_3s_linear_infinite]" : "text-gray-300")} />
-                {currentLevel >= 4 ? (
-                   <div className="flex items-center font-bold"><span className="text-xs text-white">80</span><Gem className="w-3 h-3 ml-0.5 text-fuchsia-400"/></div>
+                {currentLevel >= 2 ? (
+                   <div className="flex items-center font-bold"><span className="text-xs text-white">50</span><Gem className="w-3 h-3 ml-0.5 text-fuchsia-400"/></div>
                 ) : (
-                   <span className="text-[10px] font-bold text-white/70 uppercase">Lvl 4</span>
+                   <span className="text-[10px] font-bold text-white/70 uppercase">Lvl 2</span>
+                )}
+             </button>
+
+             <button 
+               onClick={() => currentLevel >= 4 ? handleReverseClick() : null}
+               className={cn("flex items-center justify-center gap-1 px-3 py-1.5 rounded-full border-2 transition-all shadow-md group relative", currentLevel >= 4 ? "bg-black/30 border-black/50 hover:bg-black/40" : "opacity-50 grayscale")}
+             >
+                {currentLevel < 4 && <div className="absolute -top-1 -right-1 bg-fuchsia-600 rounded-full p-0.5"><Lock className="w-3 h-3 text-white" /></div>}
+                <RotateCcw className={cn("w-4 h-4 drop-shadow-lg text-gray-300")} />
+                {currentLevel >= 4 ? (
+                  <div className="flex items-center font-bold"><span className="text-xs text-white">50</span><Gem className="w-3 h-3 ml-0.5 text-fuchsia-400"/></div>
+                ) : (
+                  <span className="text-[10px] font-bold text-white/70 uppercase">Lvl 4</span>
                 )}
              </button>
           </div>
@@ -571,8 +709,8 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
                     {shape && (
                       <div 
                         className={cn(
-                          "transition-opacity duration-200 cursor-grab active:cursor-grabbing touch-none", 
-                          dragState?.index === idx ? 'opacity-0' : 'opacity-100'
+                          "cursor-grab active:cursor-grabbing touch-none", 
+                          dragState?.index === idx ? 'opacity-20' : 'opacity-100'
                         )}
                         onPointerDown={(e) => handleShapeClick(idx, e)}
                       >
@@ -597,17 +735,16 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
           ref={(el) => {
             floatingShapeRef.current = el;
             if (el && pointerPosRef.current) {
-              const DRAG_OFFSET_Y = 100;
-              el.style.transform = `translate3d(${pointerPosRef.current.x}px, ${pointerPosRef.current.y - DRAG_OFFSET_Y}px, 0)`;
+              el.style.transform = `translate3d(${pointerPosRef.current.x}px, ${pointerPosRef.current.y}px, 0)`;
             }
           }}
           className="fixed pointer-events-none z-50 top-0 left-0"
         >
            <motion.div 
-             initial={{ scale: 0.5 }}
-             animate={{ scale: 1 }}
-             transition={{ type: 'spring', bounce: 0.4, duration: 0.3 }}
-             className="transform -translate-x-1/2 -translate-y-1/2 drop-shadow-[0_10px_30px_rgba(0,0,0,0.5)]"
+             initial={{ scale: 1 }}
+             animate={{ scale: 1.1 }}
+             style={{ transform: 'translate3d(-50%, -50%, 0)' }}
+             className="drop-shadow-[0_15px_40px_rgba(0,0,0,0.6)]"
            >
              <PreviewShape shape={availableShapes[dragState.index]!} cellSize={gridCellSize} />
            </motion.div>

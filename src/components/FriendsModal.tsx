@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Users, X, Search, UserPlus, Check, UserMinus, Clock, UserCheck } from 'lucide-react';
+import { Users, X, Search, UserPlus, Check, UserMinus, Clock, UserCheck, Play, Wifi, WifiOff } from 'lucide-react';
 import { sound } from '../utils/soundEngine';
 import { cn } from '../utils/cn';
 import { safeStorage } from '../utils/safeStorage';
@@ -36,6 +36,32 @@ export function FriendsModal({ onClose }: Props) {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   
   const [friendships, setFriendships] = useState<Friendship[]>([]);
+  const [userPresenceMap, setUserPresenceMap] = useState<Record<string, { isOnline: boolean, lastActive?: string }>>({});
+
+  useEffect(() => {
+    const q = query(collection(db, 'users'));
+    const unsub = onSnapshot(q, (snapshot) => {
+      const pMap: Record<string, { isOnline: boolean, lastActive?: string }> = {};
+      snapshot.forEach(docSnap => {
+        const data = docSnap.data();
+        let isOnline = !!data.isOnline;
+        if (data.lastActive) {
+          const diffMs = Date.now() - new Date(data.lastActive).getTime();
+          if (diffMs > 30000) { // stale active timestamp > 30 seconds means offline
+            isOnline = false;
+          }
+        }
+        pMap[docSnap.id] = {
+          isOnline,
+          lastActive: data.lastActive
+        };
+      });
+      setUserPresenceMap(pMap);
+    }, (error) => {
+      console.warn("Presence sync error ignored:", error);
+    });
+    return () => unsub();
+  }, []);
 
   useEffect(() => {
     const unsubAuth = auth.onAuthStateChanged(user => {
@@ -69,13 +95,24 @@ export function FriendsModal({ onClose }: Props) {
     if (!searchQuery.trim() || !currentUserId) return;
     setIsSearching(true);
     sound.playClick?.();
+    const normalizedSearch = searchQuery.trim().toLowerCase();
     try {
-      const q = query(
+      let q = query(
         collection(db, 'users'),
-        where('username', '>=', searchQuery.trim()),
-        where('username', '<=', searchQuery.trim() + '\uf8ff')
+        where('username_lower', '>=', normalizedSearch),
+        where('username_lower', '<=', normalizedSearch + '\uf8ff')
       );
-      const snapshot = await getDocs(q);
+      let snapshot = await getDocs(q);
+      
+      // Fallback to case-sensitive exact match if prefix lower search yields nothing (for legacy users)
+      if (snapshot.empty && searchQuery.trim().length > 2) {
+         q = query(
+           collection(db, 'users'),
+           where('username', '==', searchQuery.trim())
+         );
+         snapshot = await getDocs(q);
+      }
+
       const results: FriendUser[] = [];
       snapshot.forEach(doc => {
         if (doc.id !== currentUserId) {
@@ -131,6 +168,40 @@ export function FriendsModal({ onClose }: Props) {
       await deleteDoc(doc(db, 'friendships', f.id));
     } catch (e) {
       console.warn("Remove request error:", e);
+    }
+  };
+
+  const startMatchChallenge = async (friendId: string, friendUsername: string) => {
+    if (!currentUserId) return;
+    sound.playClick?.();
+    const myUsername = safeStorage.getItem('block_blast_username') || 'Unknown';
+    // Generate match document
+    const matchId = `match_${[currentUserId, friendId].sort().join('_')}`;
+    try {
+      await setDoc(doc(db, 'matches', matchId), {
+        users: [currentUserId, friendId],
+        challengerId: currentUserId,
+        challengeeId: friendId,
+        challengerUsername: myUsername,
+        challengeeUsername: friendUsername,
+        status: 'pending',
+        challengerScore: 0,
+        challengeeScore: 0,
+        challengerFinished: false,
+        challengeeFinished: false,
+        mic1: true,
+        mic2: true,
+        sound1: true,
+        sound2: true,
+        chatText: 'Match challenge initiated! Get ready!',
+        chatSenderId: currentUserId,
+        chatTime: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+      alert(`Game challenge sent to ${friendUsername}! Please wait for them to accept.`);
+    } catch (e) {
+      console.warn("Challenge match error:", e);
     }
   };
 
@@ -204,6 +275,8 @@ export function FriendsModal({ onClose }: Props) {
               ) : (
                 friends.map(f => {
                   const friendUsername = f.senderId === currentUserId ? f.receiverUsername : f.senderUsername;
+                  const friendId = f.senderId === currentUserId ? f.receiverId : f.senderId;
+                  const isOnline = !!userPresenceMap[friendId]?.isOnline;
                   return (
                     <motion.div
                       key={f.id}
@@ -213,17 +286,32 @@ export function FriendsModal({ onClose }: Props) {
                       className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/5"
                     >
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold text-lg">
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold text-lg relative">
                           {friendUsername?.[0]?.toUpperCase()}
+                          <span className={cn("absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border border-zinc-900", isOnline ? "bg-emerald-500" : "bg-zinc-500")} />
                         </div>
                         <div>
                           <p className="text-white font-bold">{friendUsername}</p>
-                          <p className="text-emerald-400 text-xs font-medium">Friends</p>
+                          <p className={cn("text-xs font-semibold mt-0.5", isOnline ? "text-emerald-400" : "text-zinc-500")}>
+                            {isOnline ? "Online" : "Offline"}
+                          </p>
                         </div>
                       </div>
-                      <button onClick={() => removeOrDecline(f)} className="w-10 h-10 flex items-center justify-center rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white transition-colors">
-                        <UserMinus className="w-5 h-5" />
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button 
+                          onClick={() => startMatchChallenge(friendId, friendUsername || 'Friend')}
+                          className="px-3 py-1.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold text-xs uppercase tracking-wide rounded-lg flex items-center gap-1 shadow-md active:scale-95 transition-all"
+                        >
+                          <Play className="w-3 h-3 fill-white text-emerald-100" /> Play
+                        </button>
+                        <button 
+                          onClick={() => removeOrDecline(f)} 
+                          title="Remove Friend"
+                          className="w-8 h-8 flex items-center justify-center rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white transition-colors"
+                        >
+                          <UserMinus className="w-4 h-4" />
+                        </button>
+                      </div>
                     </motion.div>
                   )
                 })

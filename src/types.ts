@@ -11,7 +11,7 @@ export type GridCellData = {
 
 export type Pos = { x: number; y: number };
 
-export type GameState = 'WELCOME' | 'USERNAME' | 'MENU' | 'PLAYING' | 'GAMEOVER';
+export type GameState = 'WELCOME' | 'USERNAME' | 'MENU' | 'PLAYING' | 'GAMEOVER' | 'DUEL';
 
 export type PopupText = {
   id: string;

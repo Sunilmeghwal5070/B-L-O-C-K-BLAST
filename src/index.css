@@ -43,6 +43,11 @@ body {
 .block-orange { background-color: #f27329; color: #f27329; }
 .block-yellow { background-color: #edbb26; color: #edbb26; }
 .block-green { background-color: #55c233; color: #55c233; }
+.block-fuchsia { background-color: #d946ef; color: #d946ef; }
+.block-indigo { background-color: #6366f1; color: #6366f1; }
+.block-lime { background-color: #84cc16; color: #84cc16; }
+.block-pink { background-color: #ec4899; color: #ec4899; }
+.block-teal { background-color: #14b8a6; color: #14b8a6; }
 
 .grid-cell-empty {
   background-color: #1a2556;
@@ -193,6 +198,14 @@ body.royal-theme .grid-cell-empty {
 
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+@keyframes hint-blink {
+  0%, 100% { opacity: 0.2; transform: scale(0.95); }
+  50% { opacity: 1; transform: scale(1.05); background-color: #ef4444 !important; color: #ef4444 !important; border: 1px solid white; box-shadow: 0 0 15px #ef4444; }
+}
+.hint-blink-anim {
+  animation: hint-blink 0.6s ease-in-out 3;
+}
 
 /* Block Styles overriding the default look */
 body.block-style-flat .block-cell::before, body.block-style-flat .block-cell::after {

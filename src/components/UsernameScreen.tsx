@@ -44,6 +44,25 @@ export const UsernameScreen: React.FC<Props> = ({ onComplete }) => {
       } else {
         setStatus('success');
         safeStorage.setItem('block_blast_username', val);
+        
+        // Immediate Firestore Sync for search visibility
+        import('../utils/firebase').then(({ db, auth }) => {
+           const user = auth.currentUser;
+           if (user) {
+              import('firebase/firestore').then(({ doc, setDoc }) => {
+                 setDoc(doc(db, "users", user.uid), {
+                    username: val,
+                    username_lower: val.toLowerCase(),
+                    score: 0,
+                    highScore: 0,
+                    isOnline: true,
+                    lastActive: new Date().toISOString(),
+                    updatedAt: new Date().toISOString()
+                 }, { merge: true });
+              });
+           }
+        });
+
         sound.playClear?.();
         setTimeout(() => onComplete(val), 1000);
       }

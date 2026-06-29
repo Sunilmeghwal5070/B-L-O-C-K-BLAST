@@ -9,12 +9,6 @@ type Props = {
   onClose: () => void;
 };
 
-// Fake names
-const FAKE_USERS = [
-  '@pro_gamer', '@alex_99', '@sara_stars', '@ninja_bb', '@block_master',
-  '@joshua_v', '@luna_eclipse', '@mrx_unknown', '@bella_ciao', '@david_007'
-];
-
 export function LeaderboardModal({ onClose }: Props) {
   const sessionUsername = safeStorage.getItem('block_blast_username') || '@guest';
   const highScore = parseInt(safeStorage.getItem('block_blast_high_score') || '0', 10);
@@ -26,16 +20,17 @@ export function LeaderboardModal({ onClose }: Props) {
       import('firebase/firestore').then(({ collection, query, orderBy, limit, onSnapshot }) => {
          const q = query(collection(db, "users"), orderBy("score", "desc"), limit(50));
          unsubscribe = onSnapshot(q, (snapshot) => {
-             const users: {username: string, score: number}[] = [];
-             snapshot.forEach((doc) => {
-                 const data = doc.data();
-                 if (data.username && typeof data.score === 'number') {
-                     users.push({ username: data.username, score: data.score });
-                 }
-             });
-             setLiveUsers(users);
+              const users: {username: string, score: number}[] = [];
+              snapshot.forEach((doc) => {
+                  const data = doc.data();
+                  const bestScore = typeof data.highScore === 'number' ? data.highScore : (typeof data.score === 'number' ? data.score : 0);
+                  if (data.username && bestScore > 0) {
+                      users.push({ username: data.username, score: bestScore });
+                  }
+              });
+              setLiveUsers(users);
          }, (error) => {
-             console.warn("Leaderboard sync error ignored:", error);
+              console.warn("Leaderboard sync error ignored:", error);
          });
       });
     });
@@ -45,19 +40,11 @@ export function LeaderboardModal({ onClose }: Props) {
   }, []);
 
   const leaderboardText = useMemo(() => {
-    let generatedBase = highScore > 0 ? highScore : 500;
+    const entries: { username: string; score: number; isUser: boolean; isLive: boolean }[] = [];
     
-    // Create random list around user score
-    let entries = FAKE_USERS.map((name, i) => ({
-      username: name,
-      score: Math.max(10, Math.floor(generatedBase * (1.5 - i * 0.15) + (name.length * 13))),
-      isUser: false,
-      isLive: false
-    }));
-
-    if (highScore > 0) {
-      // Remove FAKE user if it's the sessionUsername just in case
-      entries = entries.filter(e => e.username !== sessionUsername);
+    // Add current session user if not currently present in the downloaded liveUsers list
+    const sessionUserExistsInLive = liveUsers.some(lu => lu.username === sessionUsername);
+    if (!sessionUserExistsInLive && highScore >= 0) {
       entries.push({
         username: sessionUsername,
         score: highScore,
@@ -66,15 +53,13 @@ export function LeaderboardModal({ onClose }: Props) {
       });
     }
 
-    // Merge live users
     liveUsers.forEach(lu => {
-       if (lu.username === sessionUsername) return; // already added ourselves
-       // Remove fake user if live user stole the name
-       entries = entries.filter(e => e.username !== lu.username);
+       const isMe = lu.username === sessionUsername;
+       const finalScore = isMe ? Math.max(lu.score, highScore) : lu.score;
        entries.push({
           username: lu.username,
-          score: lu.score,
-          isUser: false,
+          score: finalScore,
+          isUser: isMe,
           isLive: true
        });
     });

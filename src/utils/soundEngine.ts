@@ -77,50 +77,102 @@ class SoundEngine {
   }
 
   playClick() {
-    if (this.soundEnabled && this.ctx) this.playTone(400, 'square', 0.1, 0.05);
+    if (this.soundEnabled && this.ctx) this.playTone(450, 'sine', 0.08, 0.95);
     this.vibrate(30);
   }
 
   playPlace() {
-    if (this.soundEnabled && this.ctx) this.playTone(300, 'sine', 0.15, 0.1);
-    this.vibrate(40);
+    if (this.soundEnabled && this.ctx) {
+       // Crisp 2-step satisfying digital clicky snap
+       this.playTone(280, 'square', 0.12, 0.98);
+       setTimeout(() => this.playTone(420, 'triangle', 0.15, 0.98), 40);
+    }
+    this.vibrate(45);
   }
 
   playClear() {
     if (this.soundEnabled && this.ctx) {
-       this.playTone(600, 'triangle', 0.15, 0.15);
-       setTimeout(() => this.playTone(800, 'triangle', 0.2, 0.15), 100);
+       this.playTone(650, 'triangle', 0.25, 0.98);
+       setTimeout(() => this.playTone(850, 'triangle', 0.25, 0.98), 70);
+       setTimeout(() => this.playTone(1100, 'sine', 0.35, 1.2), 140);
     }
     this.vibrate([100, 50, 100]);
   }
 
   playError() {
     if (this.soundEnabled && this.ctx) {
-       this.playTone(150, 'sawtooth', 0.15, 0.15);
-       setTimeout(() => this.playTone(100, 'sawtooth', 0.2, 0.15), 100);
+       this.playTone(180, 'sawtooth', 0.25, 0.95);
+       setTimeout(() => this.playTone(130, 'sawtooth', 0.25, 0.95), 100);
     }
     this.vibrate([50, 50, 50]);
   }
 
   playGameOver() {
     if (this.soundEnabled && this.ctx) {
-       this.playTone(200, 'sawtooth', 0.3, 0.2);
-       setTimeout(() => this.playTone(150, 'sawtooth', 0.4, 0.3), 200);
-       setTimeout(() => this.playTone(100, 'sawtooth', 0.5, 0.3), 500);
+       this.playTone(220, 'sawtooth', 0.4, 0.95);
+       setTimeout(() => this.playTone(170, 'sawtooth', 0.5, 0.98), 200);
+       setTimeout(() => this.playTone(120, 'sawtooth', 0.6, 1.2), 500);
     }
     this.vibrate([200, 100, 300, 100, 400]);
   }
 
-  private playTone(freq: number, type: OscillatorType, dur: number, vol: number = 0.1) {
+  playBomb() {
+    if (this.soundEnabled && this.ctx) {
+       // Exploding bass sound
+       this.playTone(80, 'sawtooth', 0.8, 1.5);
+       this.playTone(120, 'square', 0.4, 1.2);
+       setTimeout(() => this.playTone(60, 'sawtooth', 1.0, 1.8), 100);
+    }
+    this.vibrate([300, 50, 400]);
+  }
+
+  playSelect() {
+    if (this.soundEnabled && this.ctx) {
+      this.playTone(440, 'sine', 0.1, 0.1); // Quick A4 note
+    }
+  }
+
+  playDeselect() {
+    if (this.soundEnabled && this.ctx) {
+      this.playTone(220, 'sine', 0.1, 0.1); // Lower A3 note
+    }
+  }
+
+  speakWord(word: string) {
+    if (!this.soundEnabled) return;
+    try {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(word);
+        utterance.rate = 1.35; // Energetic, fast pace
+        utterance.pitch = 1.6; // High futuristic synth pitch
+        utterance.volume = 1.5; // Maximum output volume
+        window.speechSynthesis.speak(utterance);
+      } else {
+        // High-pitched synth celebratory backup chord
+        this.playTone(523, 'sawtooth', 0.3, 0.95);
+        setTimeout(() => this.playTone(659, 'sine', 0.35, 0.98), 100);
+      }
+    } catch (e) {}
+  }
+
+  private async playTone(freq: number, type: OscillatorType, dur: number, vol: number = 0.1) {
     if (!this.ctx) return;
     try {
+      // Resume context if suspended (browser security)
+      if (this.ctx.state === 'suspended') {
+        await this.ctx.resume().catch(() => {});
+      }
+      
       const osc = this.ctx.createOscillator();
       const gain = this.ctx.createGain();
       
       osc.type = type;
       osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
       
-      gain.gain.setValueAtTime(vol, this.ctx.currentTime);
+      // Amplified multiplier for extremely loud & rich sound outputs
+      const loudVol = vol * 1.8;
+      gain.gain.setValueAtTime(loudVol, this.ctx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + dur);
       
       osc.connect(gain);

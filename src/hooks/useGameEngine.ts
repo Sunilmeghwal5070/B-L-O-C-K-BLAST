@@ -1,7 +1,8 @@
 import { useState, useCallback, useEffect } from 'react';
 import { GridCellData, ShapeDef, Pos, PopupText } from '../types';
-import { SHAPES_LIBRARY, GRID_SIZE } from '../constants';
+import { SHAPES_LIBRARY, GRID_SIZE, BLOCK_COLORS } from '../constants';
 import { safeStorage } from '../utils/safeStorage';
+import { sound } from '../utils/soundEngine';
 
 const createEmptyGrid = (): GridCellData[][] =>
   Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill({ isFilled: false, colorClass: null }));
@@ -52,7 +53,14 @@ export function useGameEngine() {
   const [popups, setPopups] = useState<PopupText[]>([]);
   const [comboCount, setComboCount] = useState(0);
   const [isGameOverStatus, setIsGameOverStatus] = useState(false);
+  const [hasRescuedCount, setHasRescuedCount] = useState(0);
   const [placedCoords, setPlacedCoords] = useState<{r: number, c: number}[]>([]);
+  const [history, setHistory] = useState<{
+    grid: GridCellData[][],
+    availableShapes: (ShapeDef | null)[],
+    score: number,
+    comboCount: number
+  } | null>(null);
 
   const [coins, setCoins] = useState(() => {
     const saved = safeStorage.getItem('block_blast_coins');
@@ -73,7 +81,37 @@ export function useGameEngine() {
   // Initialize
   useEffect(() => {
     const savedHighScore = safeStorage.getItem('block_blast_high_score');
-    if (savedHighScore) setHighScore(parseInt(savedHighScore, 10));
+    const localHighScore = savedHighScore ? parseInt(savedHighScore, 10) : 0;
+    if (savedHighScore) setHighScore(localHighScore);
+    
+    // Core Synchronized Global Score Loader - Keeps scores synchronized across simulator frames & tabs!
+    import('../utils/firebase').then(({ db, currentUser }) => {
+      if (currentUser) {
+        import('firebase/firestore').then(({ doc, getDoc, setDoc }) => {
+          getDoc(doc(db, "users", currentUser.uid)).then((docSnap) => {
+            if (docSnap.exists()) {
+              const data = docSnap.data();
+              if (data.highScore) {
+                const globalHighScore = parseInt(data.highScore, 10);
+                const finalMax = Math.max(globalHighScore, localHighScore);
+                setHighScore(finalMax);
+                safeStorage.setItem('block_blast_high_score', finalMax.toString());
+                
+                if (localHighScore > globalHighScore) {
+                  const uname = safeStorage.getItem('block_blast_username');
+                  setDoc(doc(db, "users", currentUser.uid), {
+                    username: uname,
+                    username_lower: (uname || '').toLowerCase(),
+                    highScore: finalMax,
+                    score: Math.max(data.score || 0, score)
+                  }, { merge: true });
+                }
+              }
+            }
+          });
+        });
+      }
+    });
     
     const saved = safeStorage.getItem('block_blast_save');
     if (!saved) {
@@ -168,26 +206,63 @@ export function useGameEngine() {
   };
 
   const generateSmartShapes = (currentGrid: GridCellData[][]): (ShapeDef | null)[] => {
+    // Count current filled blocks to calculate board density
+    let filledCount = 0;
+    for (let r = 0; r < GRID_SIZE; r++) {
+      for (let c = 0; c < GRID_SIZE; c++) {
+        if (currentGrid[r][c].isFilled) filledCount++;
+      }
+    }
+    const totalCells = GRID_SIZE * GRID_SIZE;
+    const fillRatio = filledCount / totalCells;
+
+    // Filter shapes dynamically based on density. If density is high (> 40%), we supply smaller, easier shapes (<= 3 blocks)!
+    let candidates = SHAPES_LIBRARY;
+    if (fillRatio > 0.40) {
+      candidates = SHAPES_LIBRARY.filter(s => {
+        let size = 0;
+        for (let r = 0; r < s.matrix.length; r++) {
+          for (let c = 0; c < s.matrix[r].length; c++) {
+            if (s.matrix[r][c] === 1) size++;
+          }
+        }
+        return size <= 3; // Filter to smaller, highly-flexible pieces
+      });
+    }
+    
+    if (candidates.length === 0) candidates = SHAPES_LIBRARY;
+
+    const getRandomWithColor = () => {
+      const base = candidates[Math.floor(Math.random() * candidates.length)];
+      const color = BLOCK_COLORS[Math.floor(Math.random() * BLOCK_COLORS.length)];
+      return { ...base, colorClass: color };
+    };
+
+    // Attempt to generate 3 candidates
     let generated: (ShapeDef | null)[] = [
-      SHAPES_LIBRARY[Math.floor(Math.random() * SHAPES_LIBRARY.length)],
-      SHAPES_LIBRARY[Math.floor(Math.random() * SHAPES_LIBRARY.length)],
-      SHAPES_LIBRARY[Math.floor(Math.random() * SHAPES_LIBRARY.length)]
+      getRandomWithColor(),
+      getRandomWithColor(),
+      getRandomWithColor()
     ];
 
+    // Guarantee that at least 2 shapes fit on current grid to avoid deadlocks
+    let attempts = 0;
+    while (attempts < 50 && !checkAnyFits(generated, currentGrid)) {
+      attempts++;
+      generated = [
+        getRandomWithColor(),
+        getRandomWithColor(),
+        getRandomWithColor()
+      ];
+    }
     if (!checkAnyFits(generated, currentGrid)) {
-      if (Math.random() < 0.90) { // 90% chance to save the player
-         const fittingShapes = SHAPES_LIBRARY.filter(shape => {
-           for (let r = 0; r < GRID_SIZE; r++) {
-             for (let c = 0; c < GRID_SIZE; c++) {
-               if (checkFits(shape, currentGrid, c, r)) return true;
-             }
-           }
-           return false;
-         });
-         
-         if (fittingShapes.length > 0) {
-            generated[Math.floor(Math.random() * 3)] = fittingShapes[Math.floor(Math.random() * fittingShapes.length)];
-         }
+      const singletonSymbol = SHAPES_LIBRARY.find(s => {
+         return s.matrix.length === 1 && s.matrix[0].length === 1 && s.matrix[0][0] === 1;
+      });
+      if (singletonSymbol) {
+         generated[0] = singletonSymbol;
+         // Make another slot is simple also
+         generated[1] = candidates[Math.floor(Math.random() * candidates.length)];
       }
     }
 
@@ -199,7 +274,29 @@ export function useGameEngine() {
   }, [grid]);
   useEffect(() => {
      if (clearingRows.length === 0 && clearingCols.length === 0) {
-        if (!checkAnyFits(availableShapes, grid)) {
+        const anyFits = checkAnyFits(availableShapes, grid);
+        if (!anyFits) {
+           const hasPieces = availableShapes.some(s => s !== null);
+           if (hasPieces && !isGameOverStatus && hasRescuedCount < 2) {
+              // FORGIVING MODE: Auto-clear some space if stuck!
+              setHasRescuedCount(prev => prev + 1);
+              sound.playBomb();
+              addPopup('LEVEL SAVED!', 180, 300, '#10b981');
+              
+              setGrid(prev => {
+                const newGrid = prev.map(row => row.map(cell => ({ ...cell })));
+                // Clear 3x3 block in the middle to give breathing room
+                for (let r = 2; r < 5; r++) {
+                  for (let c = 2; c < 5; c++) {
+                    newGrid[r][c].occupied = false;
+                    newGrid[r][c].colorClass = '';
+                  }
+                }
+                return newGrid;
+              });
+              return;
+           }
+
            if (!isGameOverStatus) {
               setIsGameOverStatus(true);
               safeStorage.removeItem('block_blast_save');
@@ -210,7 +307,7 @@ export function useGameEngine() {
            }
         }
      }
-  }, [availableShapes, grid, clearingRows, clearingCols, isGameOverStatus]);
+  }, [availableShapes, grid, clearingRows, clearingCols, isGameOverStatus, hasRescuedCount]);
 
   const spendCoins = (amount: number): boolean => {
     if (coins >= amount) {
@@ -225,6 +322,7 @@ export function useGameEngine() {
   };
 
   const triggerBomb = (r: number, c: number) => {
+    sound.playBomb();
     setGrid(prev => {
       const newGrid = prev.map(row => row.map(cell => ({ ...cell })));
       for (let i = -1; i <= 1; i++) {
@@ -238,13 +336,30 @@ export function useGameEngine() {
       }
       return newGrid;
     });
-    // Add some visual effects via placedCoords for particles, maybe manually trigger them? We will handle visually in component.
+
+    const screenX = c * 45 + 50;
+    const screenY = r * 45 + 150;
+    addPopup('BOOM!', screenX, screenY, '#ef4444');
+    sound.vibrate([200, 50, 200]);
+  };
+
+  const triggerReverse = (): boolean => {
+    if (!history) return false;
+    setGrid(history.grid);
+    setAvailableShapes(history.availableShapes);
+    setScore(history.score);
+    setComboCount(history.comboCount);
+    setHistory(null);
+    sound.playClear();
+    return true;
   };
 
   const rerollShape = (index: number) => {
     setAvailableShapes(prev => {
       const next = [...prev];
-      next[index] = SHAPES_LIBRARY[Math.floor(Math.random() * SHAPES_LIBRARY.length)];
+      const base = SHAPES_LIBRARY[Math.floor(Math.random() * SHAPES_LIBRARY.length)];
+      const color = BLOCK_COLORS[Math.floor(Math.random() * BLOCK_COLORS.length)];
+      next[index] = { ...base, colorClass: color };
       return next;
     });
   };
@@ -267,6 +382,14 @@ export function useGameEngine() {
   const placeShape = (shapeIndex: number, gridX: number, gridY: number, screenX: number, screenY: number): boolean => {
     const shape = availableShapes[shapeIndex];
     if (!shape || !checkFits(shape, grid, gridX, gridY)) return false;
+
+    // Save for Undo/Reverse
+    setHistory({
+      grid: grid.map(row => row.map(cell => ({ ...cell }))),
+      availableShapes: [...availableShapes],
+      score,
+      comboCount
+    });
 
     // Apply block to grid
     let blocksPlaced = 0;
@@ -318,7 +441,7 @@ export function useGameEngine() {
       setClearingCols(fullCols);
 
       const colorGrid = newGrid.map((row, rIdx) => 
-        row.map((cell, cIdx) => {
+         row.map((cell, cIdx) => {
           if (fullRows.includes(rIdx) || fullCols.includes(cIdx)) {
             return { ...cell, colorClass: shape.colorClass };
           }
@@ -327,25 +450,29 @@ export function useGameEngine() {
       );
       setGrid(colorGrid);
 
-      // Score calc based on screenshots: 
-      // +10 flat for piece, +10 or 20 for multiple pieces. A "Good!" often gives +20 or +30 or +40 depending on lines and combo
+      // Moderate score bonus to prevent runaway high scores
       const newCombo = comboCount + 1;
       setComboCount(newCombo);
-      earnedScore += (linesCleared * 10) * newCombo;
+      
+      // Standard Tetris-like scoring but with dynamic combo multipliers
+      const baseLinePoints = [0, 100, 300, 500, 800]; // Bonus for clearing 1, 2, 3, or 4+ lines
+      const lineBonus = baseLinePoints[Math.min(linesCleared, 4)] || 1000;
+      
+      earnedScore += Math.round(lineBonus * (1 + newCombo * 0.2));
 
-      // Popups
+      // Popups & dynamic speak effects for game voices
       let text = 'Good!';
       let color = '#38bdf8'; // light blue
 
       if (linesCleared === 2) {
-         text = 'Awesome!';
-         color = '#a855f7'; // purple
+         text = 'Sweet!';
+         color = '#10b981'; // Green accent
       } else if (linesCleared === 3) {
-         text = 'Super!';
-         color = '#f97316'; // orange
+         text = 'Amazing!';
+         color = '#ec4899'; // Pink accent
       } else if (linesCleared >= 4) {
-         text = 'PERFECT!';
-         color = '#ef4444'; // red
+         text = 'Unbelievable!';
+         color = '#f59e0b'; // Amber gold
       }
 
       if (newCombo > 1) {
@@ -371,11 +498,11 @@ export function useGameEngine() {
           
           // Re-check for new shape gen if out
           setAvailableShapes(currentShapes => {
-             const active = currentShapes.filter(s => s !== null);
-             if (active.length === 0) {
-               return generateSmartShapes(clearedGrid);
-             }
-             return currentShapes;
+              const active = currentShapes.filter(s => s !== null);
+              if (active.length === 0) {
+                return generateSmartShapes(clearedGrid);
+              }
+              return currentShapes;
           });
           return clearedGrid;
         });
@@ -399,9 +526,24 @@ export function useGameEngine() {
     setScore(prevScore => {
        const newTotalScore = prevScore + earnedScore;
        setHighScore(prevHS => {
-           const max = Math.max(prevHS, newTotalScore);
-           safeStorage.setItem('block_blast_high_score', max.toString());
-           return max;
+            const max = Math.max(prevHS, newTotalScore);
+            safeStorage.setItem('block_blast_high_score', max.toString());
+            // Sync to Firebase on highscore updates
+            import('../utils/firebase').then(({ db, currentUser }) => {
+              if (currentUser) {
+                import('firebase/firestore').then(({ doc, setDoc }) => {
+                  const uname = safeStorage.getItem('block_blast_username') || '@guest';
+                  setDoc(doc(db, "users", currentUser.uid), {
+                    username: uname,
+                    username_lower: uname.toLowerCase(),
+                    highScore: max,
+                    score: newTotalScore,
+                    updatedAt: new Date().toISOString()
+                  }, { merge: true });
+                });
+              }
+            });
+            return max;
        });
        return newTotalScore;
     });
@@ -414,6 +556,7 @@ export function useGameEngine() {
     setScore(0);
     setComboCount(0);
     setIsGameOverStatus(false);
+    setHasRescuedCount(0);
     setCurrentLevel(1);
     safeStorage.removeItem('block_blast_save');
     generateNewShapes();
@@ -436,6 +579,7 @@ export function useGameEngine() {
     setLevelUpData,
     spendCoins,
     triggerBomb,
+    triggerReverse,
     rerollShape,
     getHint,
     placeShape,

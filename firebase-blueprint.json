@@ -7,6 +7,7 @@
       "properties": {
         "username": { "type": "string" },
         "score": { "type": "number" },
+        "highScore": { "type": "number" },
         "coins": { "type": "number" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },
@@ -27,6 +28,33 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["users", "senderId", "receiverId", "senderUsername", "receiverUsername", "status", "createdAt"]
+    },
+    "Match": {
+      "title": "Match",
+      "description": "A duel/match between two friends",
+      "type": "object",
+      "properties": {
+        "users": { "type": "array", "items": { "type": "string" } },
+        "challengerId": { "type": "string" },
+        "challengeeId": { "type": "string" },
+        "challengerUsername": { "type": "string" },
+        "challengeeUsername": { "type": "string" },
+        "status": { "type": "string" },
+        "challengerScore": { "type": "number" },
+        "challengeeScore": { "type": "number" },
+        "challengerFinished": { "type": "boolean" },
+        "challengeeFinished": { "type": "boolean" },
+        "mic1": { "type": "boolean" },
+        "mic2": { "type": "boolean" },
+        "sound1": { "type": "boolean" },
+        "sound2": { "type": "boolean" },
+        "chatText": { "type": "string" },
+        "chatSenderId": { "type": "string" },
+        "chatTime": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["users", "challengerId", "challengeeId", "status"]
     }
   },
   "firestore": {
@@ -37,6 +65,10 @@
     "friendships/{friendshipId}": {
        "schema": { "$ref": "#/entities/Friendship" },
        "description": "Stores friendship records and requests"
+    },
+    "matches/{matchId}": {
+       "schema": { "$ref": "#/entities/Match" },
+       "description": "Stores active game/duel sessions between friends"
     }
   }
 }

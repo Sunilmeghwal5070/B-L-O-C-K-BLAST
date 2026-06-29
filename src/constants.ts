@@ -47,8 +47,41 @@ export const SHAPES_LIBRARY: ShapeDef[] = [
   { id: 'z_1', matrix: [[1,1,0],[0,1,1]], colorClass: 'block-red' },
   { id: 's_1', matrix: [[0,1,1],[1,1,0]], colorClass: 'block-green' },
   
-  // Diagonals / Misc
+  // Diagonal / Misc
   { id: 'diag_1', matrix: [[1,0,0],[0,1,0],[0,0,1]], colorClass: 'block-orange' },
+  { id: 'diag_2', matrix: [[0,0,1],[0,1,0],[1,0,0]], colorClass: 'block-orange' },
+
+  // Big Cross
+  { id: 'cross', matrix: [[0,1,0],[1,1,1],[0,1,0]], colorClass: 'block-red' },
+
+  // 1x2 and 1x3 variants
+  { id: 'dot_v_2', matrix: [[1],[1]], colorClass: 'block-purple' },
+  { id: 'dot_h_2', matrix: [[1,1]], colorClass: 'block-purple' },
+
+  // U shape
+  { id: 'u_shape', matrix: [[1,0,1],[1,1,1]], colorClass: 'block-blue' },
+
+  // J shapes
+  { id: 'j_lg', matrix: [[0,1],[0,1],[1,1]], colorClass: 'block-green' },
+  
+  // Stairs/Zigzag
+  { id: 'stair_left', matrix: [[1,0],[1,1],[0,1]], colorClass: 'block-cyan' },
+  { id: 'stair_right', matrix: [[0,1],[1,1],[1,0]], colorClass: 'block-cyan' },
 ];
 
 export const GRID_SIZE = 8;
+
+export const BLOCK_COLORS = [
+  'block-yellow',
+  'block-blue',
+  'block-orange',
+  'block-purple',
+  'block-cyan',
+  'block-green',
+  'block-red',
+  'block-fuchsia',
+  'block-indigo',
+  'block-lime',
+  'block-pink',
+  'block-teal'
+];
