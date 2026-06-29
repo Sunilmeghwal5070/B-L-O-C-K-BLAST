@@ -91,11 +91,21 @@ export function FriendsModal({ onClose }: Props) {
     return () => unsub();
   }, [currentUserId]);
 
-  const handleSearch = async () => {
-    if (!searchQuery.trim() || !currentUserId) return;
+  const handleSearch = async (queryToSearch: string = searchQuery) => {
+    let term = queryToSearch.trim();
+    if (!term || !currentUserId) {
+        setSearchResults([]);
+        return;
+    }
     setIsSearching(true);
-    sound.playClick?.();
-    const normalizedSearch = searchQuery.trim().toLowerCase();
+    
+    // Ensure the search term starts with '@' since all usernames are stored with it
+    if (!term.startsWith('@')) {
+      term = '@' + term;
+    }
+    
+    const normalizedSearch = term.toLowerCase();
+    
     try {
       let q = query(
         collection(db, 'users'),
@@ -105,10 +115,10 @@ export function FriendsModal({ onClose }: Props) {
       let snapshot = await getDocs(q);
       
       // Fallback to case-sensitive exact match if prefix lower search yields nothing (for legacy users)
-      if (snapshot.empty && searchQuery.trim().length > 2) {
+      if (snapshot.empty && term.length > 2) {
          q = query(
            collection(db, 'users'),
-           where('username', '==', searchQuery.trim())
+           where('username', '==', term)
          );
          snapshot = await getDocs(q);
       }
@@ -125,6 +135,15 @@ export function FriendsModal({ onClose }: Props) {
     }
     setIsSearching(false);
   };
+
+  useEffect(() => {
+     if (activeTab === 'add') {
+         const timeoutId = setTimeout(() => {
+             handleSearch(searchQuery);
+         }, 300);
+         return () => clearTimeout(timeoutId);
+     }
+  }, [searchQuery, activeTab, currentUserId]);
 
   const sendRequest = async (targetUser: FriendUser) => {
     if (!currentUserId) return;

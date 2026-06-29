@@ -224,119 +224,7 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
     return () => clearTimeout(handler);
   }, [score]);
 
-  useEffect(() => {
-    const handlePointerMove = (e: PointerEvent) => {
-      if (!dragState) return;
-      e.preventDefault();
-      
-      pointerPosRef.current = { x: e.clientX, y: e.clientY };
-      const { index } = dragState;
 
-      // Update floating element directly to bypass React render for extreme smoothness
-      if (floatingShapeRef.current) {
-         floatingShapeRef.current.style.transform = `translate3d(${e.clientX}px, ${e.clientY}px, 0)`;
-      }
-
-      if (gridRef.current) {
-        if (!gridRectRef.current) {
-           gridRectRef.current = gridRef.current.getBoundingClientRect();
-        }
-        const rect = gridRectRef.current;
-        const cellW = rect.width / GRID_SIZE;
-        const cellH = rect.height / GRID_SIZE;
-
-        const pieceCX = e.clientX;
-        const pieceCY = e.clientY;
-
-        const relX = pieceCX - rect.left;
-        const relY = pieceCY - rect.top;
-
-        if (relX >= -cellW && relX <= rect.width + cellW && relY >= -cellH && relY <= rect.height + cellH) {
-            const shape = availableShapes[index];
-            if (shape) {
-               const cols = shape.matrix[0].length;
-               const rows = shape.matrix.length;
-               
-               const exactCol = relX / cellW;
-               const exactRow = relY / cellH;
-
-               // Align visual center to grid center continuously
-               const gridX = Math.round(exactCol - cols / 2);
-               const gridY = Math.round(exactRow - rows / 2);
-
-               setHoverGridPos(prev => {
-                  if (!prev || prev.gridX !== gridX || prev.gridY !== gridY) return { gridX, gridY };
-                  return prev;
-               });
-            }
-        } else {
-            setHoverGridPos(prev => prev !== null ? null : prev);
-        }
-      }
-    };
-
-    const handlePointerUp = (e: PointerEvent) => {
-      if (!dragState) return;
-      
-      const { index } = dragState;
-      const currX = pointerPosRef.current.x;
-      const currY = pointerPosRef.current.y;
-      
-      let dropGridPos: { gridX: number, gridY: number } | null = null;
-
-      // Ensure synchronously accurate position
-      if (gridRef.current) {
-        if (!gridRectRef.current) {
-           gridRectRef.current = gridRef.current.getBoundingClientRect();
-        }
-        const rect = gridRectRef.current;
-        const cellW = rect.width / GRID_SIZE;
-        const cellH = rect.height / GRID_SIZE;
-        
-        const pieceCX = currX;
-        const pieceCY = currY;
-        const relX = pieceCX - rect.left;
-        const relY = pieceCY - rect.top;
-
-        if (relX >= -cellW && relX <= rect.width + cellW && relY >= -cellH && relY <= rect.height + cellH) {
-            const shape = availableShapes[index];
-            if (shape) {
-               const cols = shape.matrix[0].length;
-               const rows = shape.matrix.length;
-               const exactCol = relX / cellW;
-               const exactRow = relY / cellH;
-               const gridX = Math.round(exactCol - cols / 2);
-               const gridY = Math.round(exactRow - rows / 2);
-               dropGridPos = { gridX, gridY };
-            }
-        }
-      }
-      
-      if (dropGridPos) {
-         const success = placeShape(index, dropGridPos.gridX, dropGridPos.gridY, currX, currY);
-         if (success) {
-            sound.playPlace();
-         } else {
-            sound.playDeselect();
-         }
-      } else {
-         sound.playDeselect();
-      }
-      
-      setDragState(null);
-      setHoverGridPos(null);
-    };
-
-    if (dragState) {
-      document.addEventListener('pointermove', handlePointerMove, { passive: false });
-      document.addEventListener('pointerup', handlePointerUp);
-    }
-
-    return () => {
-      document.removeEventListener('pointermove', handlePointerMove);
-      document.removeEventListener('pointerup', handlePointerUp);
-    };
-  }, [dragState, availableShapes, placeShape]);
 
   // Hook into clears for immediate sound
   useEffect(() => {
@@ -445,6 +333,110 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
      sound.playSelect?.();
      pointerPosRef.current = { x: e.clientX, y: e.clientY };
      setDragState({ index, startX: e.clientX, startY: e.clientY });
+
+     const onMove = (eMove: PointerEvent) => {
+        eMove.preventDefault();
+        pointerPosRef.current = { x: eMove.clientX, y: eMove.clientY };
+        
+        let rafId: number;
+        if (floatingShapeRef.current) {
+           rafId = requestAnimationFrame(() => {
+              if (floatingShapeRef.current) {
+                 floatingShapeRef.current.style.transform = `translate3d(${eMove.clientX}px, ${eMove.clientY}px, 0)`;
+              }
+           });
+        }
+
+        if (gridRef.current) {
+          if (!gridRectRef.current) {
+             gridRectRef.current = gridRef.current.getBoundingClientRect();
+          }
+          const rect = gridRectRef.current;
+          const cellW = rect.width / GRID_SIZE;
+          const cellH = rect.height / GRID_SIZE;
+
+          const pieceCX = eMove.clientX;
+          const pieceCY = eMove.clientY;
+
+          const relX = pieceCX - rect.left;
+          const relY = pieceCY - rect.top;
+
+          if (relX >= -cellW && relX <= rect.width + cellW && relY >= -cellH && relY <= rect.height + cellH) {
+              const shape = availableShapes[index];
+              if (shape) {
+                 const cols = shape.matrix[0].length;
+                 const rows = shape.matrix.length;
+                 
+                 const exactCol = relX / cellW;
+                 const exactRow = relY / cellH;
+
+                 const gridX = Math.round(exactCol - cols / 2);
+                 const gridY = Math.round(exactRow - rows / 2);
+
+                 setHoverGridPos(prev => {
+                    if (!prev || prev.gridX !== gridX || prev.gridY !== gridY) return { gridX, gridY };
+                    return prev;
+                 });
+              }
+          } else {
+              setHoverGridPos(prev => prev !== null ? null : prev);
+          }
+        }
+     };
+
+     const onUp = (eUp: PointerEvent) => {
+        const currX = pointerPosRef.current.x;
+        const currY = pointerPosRef.current.y;
+        
+        let dropGridPos: { gridX: number, gridY: number } | null = null;
+
+        if (gridRef.current) {
+          if (!gridRectRef.current) {
+             gridRectRef.current = gridRef.current.getBoundingClientRect();
+          }
+          const rect = gridRectRef.current;
+          const cellW = rect.width / GRID_SIZE;
+          const cellH = rect.height / GRID_SIZE;
+          
+          const pieceCX = currX;
+          const pieceCY = currY;
+          const relX = pieceCX - rect.left;
+          const relY = pieceCY - rect.top;
+
+          if (relX >= -cellW && relX <= rect.width + cellW && relY >= -cellH && relY <= rect.height + cellH) {
+              const shape = availableShapes[index];
+              if (shape) {
+                 const cols = shape.matrix[0].length;
+                 const rows = shape.matrix.length;
+                 const exactCol = relX / cellW;
+                 const exactRow = relY / cellH;
+                 const gridX = Math.round(exactCol - cols / 2);
+                 const gridY = Math.round(exactRow - rows / 2);
+                 dropGridPos = { gridX, gridY };
+              }
+          }
+        }
+        
+        if (dropGridPos) {
+           const success = placeShape(index, dropGridPos.gridX, dropGridPos.gridY, currX, currY);
+           if (success) {
+              sound.playPlace();
+           } else {
+              sound.playDeselect();
+           }
+        } else {
+           sound.playDeselect();
+        }
+        
+        setDragState(null);
+        setHoverGridPos(null);
+        
+        document.removeEventListener('pointermove', onMove);
+        document.removeEventListener('pointerup', onUp);
+     };
+
+     document.addEventListener('pointermove', onMove, { passive: false });
+     document.addEventListener('pointerup', onUp);
   };
 
   const handleReverseClick = () => {
@@ -738,16 +730,17 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
               el.style.transform = `translate3d(${pointerPosRef.current.x}px, ${pointerPosRef.current.y}px, 0)`;
             }
           }}
-          className="fixed pointer-events-none z-50 top-0 left-0"
+          className="fixed pointer-events-none z-50 top-0 left-0 will-change-transform"
         >
-           <motion.div 
-             initial={{ scale: 1 }}
-             animate={{ scale: 1.1 }}
-             style={{ transform: 'translate3d(-50%, -50%, 0)' }}
+           <div 
+             style={{ 
+               transform: 'translate3d(-50%, -50%, 0) scale(1.1)',
+               transition: 'transform 0.1s ease-out'
+             }}
              className="drop-shadow-[0_15px_40px_rgba(0,0,0,0.6)]"
            >
              <PreviewShape shape={availableShapes[dragState.index]!} cellSize={gridCellSize} />
-           </motion.div>
+           </div>
         </div>
       )}
 
