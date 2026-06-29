@@ -28,6 +28,14 @@ class SoundEngine {
     }
   }
 
+  // Helper to attach to global events
+  public unlockAudio() {
+     this.init();
+     if (this.ctx && this.ctx.state === 'suspended') {
+        this.ctx.resume();
+     }
+  }
+
   setSoundEnabled(enabled: boolean) {
      this.soundEnabled = enabled;
      safeStorage.setItem('block_blast_sound', String(enabled));
@@ -77,65 +85,70 @@ class SoundEngine {
   }
 
   playClick() {
-    if (this.soundEnabled && this.ctx) this.playTone(450, 'sine', 0.08, 0.95);
+    if (!this.soundEnabled) return;
+    this.init();
+    this.playTone(450, 'sine', 0.08, 0.95);
     this.vibrate(30);
   }
 
   playPlace() {
-    if (this.soundEnabled && this.ctx) {
-       // Crisp 2-step satisfying digital clicky snap
-       this.playTone(280, 'square', 0.12, 0.98);
-       setTimeout(() => this.playTone(420, 'triangle', 0.15, 0.98), 40);
-    }
+    if (!this.soundEnabled) return;
+    this.init();
+    // Crisp 2-step satisfying digital clicky snap
+    this.playTone(280, 'square', 0.12, 0.98);
+    setTimeout(() => this.playTone(420, 'triangle', 0.15, 0.98), 40);
     this.vibrate(45);
   }
 
   playClear() {
-    if (this.soundEnabled && this.ctx) {
-       this.playTone(650, 'triangle', 0.25, 0.98);
-       setTimeout(() => this.playTone(850, 'triangle', 0.25, 0.98), 70);
-       setTimeout(() => this.playTone(1100, 'sine', 0.35, 1.2), 140);
-    }
+    if (!this.soundEnabled) return;
+    this.init();
+    this.playTone(650, 'triangle', 0.25, 0.98);
+    setTimeout(() => this.playTone(850, 'triangle', 0.25, 0.98), 70);
+    setTimeout(() => this.playTone(1100, 'sine', 0.35, 1.2), 140);
     this.vibrate([100, 50, 100]);
   }
 
   playError() {
-    if (this.soundEnabled && this.ctx) {
-       this.playTone(180, 'sawtooth', 0.25, 0.95);
-       setTimeout(() => this.playTone(130, 'sawtooth', 0.25, 0.95), 100);
-    }
+    if (!this.soundEnabled) return;
+    this.init();
+    this.playTone(180, 'sawtooth', 0.25, 0.95);
+    setTimeout(() => this.playTone(130, 'sawtooth', 0.25, 0.95), 100);
     this.vibrate([50, 50, 50]);
   }
 
   playGameOver() {
-    if (this.soundEnabled && this.ctx) {
-       this.playTone(220, 'sawtooth', 0.4, 0.95);
-       setTimeout(() => this.playTone(170, 'sawtooth', 0.5, 0.98), 200);
-       setTimeout(() => this.playTone(120, 'sawtooth', 0.6, 1.2), 500);
-    }
+    if (!this.soundEnabled) return;
+    this.init();
+    this.playTone(220, 'sawtooth', 0.4, 0.95);
+    setTimeout(() => this.playTone(170, 'sawtooth', 0.5, 0.98), 200);
+    setTimeout(() => this.playTone(120, 'sawtooth', 0.6, 1.2), 500);
     this.vibrate([200, 100, 300, 100, 400]);
   }
 
   playBomb() {
-    if (this.soundEnabled && this.ctx) {
-       // Exploding bass sound
-       this.playTone(80, 'sawtooth', 0.8, 1.5);
-       this.playTone(120, 'square', 0.4, 1.2);
-       setTimeout(() => this.playTone(60, 'sawtooth', 1.0, 1.8), 100);
-    }
+    if (!this.soundEnabled) return;
+    this.init();
+    // Exploding bass sound
+    this.playTone(80, 'sawtooth', 0.8, 1.5);
+    this.playTone(120, 'square', 0.4, 1.2);
+    setTimeout(() => this.playTone(60, 'sawtooth', 1.0, 1.8), 100);
     this.vibrate([300, 50, 400]);
   }
 
   playSelect() {
-    if (this.soundEnabled && this.ctx) {
-      this.playTone(440, 'sine', 0.1, 0.1); // Quick A4 note
-    }
+    if (!this.soundEnabled) return;
+    this.init();
+    this.playTone(600, 'sine', 0.05, 0.98); // Quick pop
+    this.vibrate(20);
   }
 
   playDeselect() {
-    if (this.soundEnabled && this.ctx) {
-      this.playTone(220, 'sine', 0.1, 0.1); // Lower A3 note
-    }
+    if (!this.soundEnabled) return;
+    this.init();
+    this.playTone(300, 'sawtooth', 0.15, 0.95);
+    this.playTone(200, 'sine', 0.2, 0.95);
+    this.vibrate(30);
   }
 
   speakWord(word: string) {

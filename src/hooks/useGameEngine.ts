@@ -406,7 +406,7 @@ export function useGameEngine() {
     }
 
     setPlacedCoords(newPlaced);
-    setTimeout(() => setPlacedCoords([]), 300);
+    setTimeout(() => setPlacedCoords([]), 150);
 
     // Base score for placing blocks
     let earnedScore = blocksPlaced; // small flat score base
@@ -508,7 +508,7 @@ export function useGameEngine() {
         });
         setClearingRows([]);
         setClearingCols([]);
-      }, 400);
+      }, 200);
 
     } else {
       setComboCount(0); // Break combo

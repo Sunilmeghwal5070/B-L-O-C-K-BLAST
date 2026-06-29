@@ -121,9 +121,10 @@ export const SettingsModal: React.FC<Props> = ({ onClose }) => {
   return (
     <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-6">
       <motion.div 
-        initial={{ opacity: 0, scale: 0.9 }}
+        initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.9 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        transition={{ duration: 0.15 }}
         className="bg-[#2A418B] rounded-3xl w-full max-w-sm border border-[#3A51A6] shadow-2xl overflow-hidden"
       >
         <div className="bg-[#354EA0] py-4 px-6 relative flex justify-between items-center border-b border-[#4361C2]">

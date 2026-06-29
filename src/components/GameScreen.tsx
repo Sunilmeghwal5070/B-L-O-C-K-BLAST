@@ -81,7 +81,7 @@ const GridCell = React.memo<{
       onPointerEnter={() => onPointerEnter(rI, cI)}
       onClick={() => onClick(rI, cI)}
       className={cn(
-        "w-full h-full rounded-[2px] transition-all duration-200 relative",
+        "w-full h-full rounded-[2px] transition-all duration-150 relative",
         isFilled && colorClass ? colorClass + ' block-cell' : 'grid-cell-empty',
         isGhost && !isFilled && `${ghostColor} block-cell opacity-80 scale-[0.98]`,
         isPreviewClearing && (isFilled || isGhost) && 'preview-clear',
@@ -280,13 +280,24 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
   }
 
 
+  const [powerUpCooldown, setPowerUpCooldown] = useState(0);
+
+  useEffect(() => {
+     if (powerUpCooldown > 0) {
+        const timer = setTimeout(() => setPowerUpCooldown(c => c - 1), 1000);
+        return () => clearTimeout(timer);
+     }
+  }, [powerUpCooldown]);
+
   const handleHintClick = () => {
      if (hintCoords) { setHintCoords(null); return; }
+     if (powerUpCooldown > 0) { sound.playError(); return; }
      if (coins >= 50) {
          const hint = getHint();
          if (hint) {
              if (spendCoins(50)) {
                  setHintCoords(hint);
+                 setPowerUpCooldown(15);
                  sound.playClick();
                  setTimeout(() => setHintCoords(null), 1800);
              }
@@ -298,8 +309,10 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
 
   const handleCellClick = React.useCallback((r: number, c: number) => {
      if (activePowerUp === 'bomb') {
+        if (powerUpCooldown > 0) { sound.playError(); setActivePowerUp(null); setBombHoverPos(null); return; }
         if (spendCoins(50)) {
            triggerBomb(r, c);
+           setPowerUpCooldown(15);
            sound.playClear();
         } else {
            sound.playError?.();
@@ -307,7 +320,7 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
         setActivePowerUp(null);
         setBombHoverPos(null);
      }
-  }, [activePowerUp, spendCoins, triggerBomb]);
+  }, [activePowerUp, spendCoins, triggerBomb, powerUpCooldown]);
 
   const handleCellPointerEnter = React.useCallback((r: number, c: number) => {
     if (activePowerUp === 'bomb') {
@@ -317,8 +330,10 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
 
   const handleShapeClick = (index: number, e: React.PointerEvent) => {
      if (activePowerUp === 'replace' && availableShapes[index]) {
+        if (powerUpCooldown > 0) { sound.playError(); setActivePowerUp(null); return; }
         if (spendCoins(50)) {
            rerollShape(index);
+           setPowerUpCooldown(15);
            sound.playPlace();
         } else {
            sound.playError?.();
@@ -331,19 +346,30 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
 
      e.preventDefault();
      sound.playSelect?.();
-     pointerPosRef.current = { x: e.clientX, y: e.clientY };
-     setDragState({ index, startX: e.clientX, startY: e.clientY });
+     const startX = e.clientX;
+     const startY = e.clientY;
+     pointerPosRef.current = { x: startX, y: startY };
+     setDragState({ index, startX, startY });
 
+     let rafId: number | null = null;
      const onMove = (eMove: PointerEvent) => {
         eMove.preventDefault();
-        pointerPosRef.current = { x: eMove.clientX, y: eMove.clientY };
         
-        let rafId: number;
+        // Increase drag sensitivity
+        const dx = eMove.clientX - startX;
+        const dy = eMove.clientY - startY;
+        const fastX = startX + dx * 1.5;
+        const fastY = startY + dy * 1.5;
+        
+        pointerPosRef.current = { x: fastX, y: fastY };
+        
         if (floatingShapeRef.current) {
+           if (rafId !== null) cancelAnimationFrame(rafId);
            rafId = requestAnimationFrame(() => {
               if (floatingShapeRef.current) {
-                 floatingShapeRef.current.style.transform = `translate3d(${eMove.clientX}px, ${eMove.clientY}px, 0)`;
+                 floatingShapeRef.current.style.transform = `translate3d(${fastX}px, ${fastY}px, 0)`;
               }
+              rafId = null;
            });
         }
 
@@ -355,8 +381,8 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
           const cellW = rect.width / GRID_SIZE;
           const cellH = rect.height / GRID_SIZE;
 
-          const pieceCX = eMove.clientX;
-          const pieceCY = eMove.clientY;
+          const pieceCX = fastX;
+          const pieceCY = fastY;
 
           const relX = pieceCX - rect.left;
           const relY = pieceCY - rect.top;
@@ -385,6 +411,8 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
      };
 
      const onUp = (eUp: PointerEvent) => {
+        if (rafId !== null) cancelAnimationFrame(rafId);
+        
         const currX = pointerPosRef.current.x;
         const currY = pointerPosRef.current.y;
         
@@ -441,9 +469,12 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
 
   const handleReverseClick = () => {
     if (currentLevel < 4) return;
+    if (powerUpCooldown > 0) { sound.playError(); return; }
     if (spendCoins(50)) {
        if (!triggerReverse()) {
           sound.playError();
+       } else {
+          setPowerUpCooldown(15);
        }
     } else {
        sound.playError();
@@ -456,7 +487,7 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
   }, [activePowerUp]);
 
   return (
-    <div className="flex-1 flex flex-col items-center justify-between p-4 w-full h-full relative select-none touch-none">
+    <div className="flex-1 flex flex-col items-center justify-between pt-2 px-2 pb-6 w-full h-full relative select-none touch-none">
       
       {/* Header */}
       <div className="w-full max-w-[400px] flex justify-between items-center mt-2 z-10">
@@ -486,8 +517,8 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
       </div>
 
       {/* Score and Level */}
-      <div className="w-full flex-col flex items-center justify-center mb-4 mt-2 z-10">
-         <div className="w-full max-w-[250px] mb-2 flex flex-col items-center">
+      <div className="w-full flex-col flex items-center justify-center mb-4 mt-2 z-10 relative">
+         <div className="w-full max-w-[250px] mb-2 flex flex-col items-center relative">
             {(() => {
                const progress = getLevelProgress(score);
                return (
@@ -507,10 +538,10 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
                    {levelUpData && (
                          <AnimatePresence>
                             <motion.div
-                              initial={{ y: 20, opacity: 0, scale: 0.5 }}
-                              animate={{ y: -85, opacity: 1, scale: 1 }}
-                              exit={{ opacity: 0, y: -130, scale: 0.8 }}
-                              className="absolute top-0 left-1/2 -translate-x-1/2 flex flex-col items-center z-[110]"
+                              initial={{ y: 10, opacity: 0, scale: 0.5 }}
+                              animate={{ y: 25, opacity: 1, scale: 1 }}
+                              exit={{ opacity: 0, y: 10, scale: 0.8 }}
+                              className="absolute top-full left-1/2 -translate-x-1/2 flex flex-col items-center z-[110]"
                             >
                                <motion.div 
                                  animate={{ 
@@ -569,7 +600,7 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
             );
          })}
       </AnimatePresence>
-      <div className="relative w-full max-w-[400px] flex-1 flex flex-col justify-end gap-10">
+      <div className="relative w-full max-w-[400px] flex-1 flex flex-col justify-end gap-2">
           
           {/* Main Grid */}
           <div className="relative">
@@ -640,12 +671,18 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
           <div className="w-full max-w-[400px] flex justify-center gap-4 mt-1 mb-[-15px] z-10">
              <button 
                onClick={() => currentLevel >= 3 ? (activePowerUp === 'bomb' ? setActivePowerUp(null) : setActivePowerUp('bomb')) : null}
-               className={cn("flex items-center justify-center gap-1 px-3 py-1.5 rounded-full border-2 transition-all shadow-md group relative", activePowerUp === 'bomb' ? "bg-red-500/40 border-red-400 scale-[1.05]" : "bg-black/30 border-black/50 hover:bg-black/40", currentLevel < 3 && "opacity-50 grayscale")}
+               className={cn("flex items-center justify-center gap-1 px-3 py-1.5 rounded-full border-2 transition-all shadow-md group relative", activePowerUp === 'bomb' ? "bg-red-500/40 border-red-400 scale-[1.05]" : "bg-black/30 border-black/50 hover:bg-black/40", currentLevel < 3 && "opacity-50 grayscale", powerUpCooldown > 0 && "opacity-50 grayscale cursor-not-allowed")}
              >
                 {currentLevel < 3 && <div className="absolute -top-1 -right-1 bg-red-600 rounded-full p-0.5"><Lock className="w-3 h-3 text-white" /></div>}
                 <Bomb className={cn("w-4 h-4 drop-shadow-lg", activePowerUp === 'bomb' ? "text-red-400 fill-red-500/20 animate-pulse" : "text-gray-300")} />
                 {currentLevel >= 3 ? (
-                   <div className="flex items-center font-bold"><span className="text-xs text-white">50</span><Gem className="w-3 h-3 ml-0.5 text-fuchsia-400"/></div>
+                   <div className="flex items-center font-bold">
+                       {powerUpCooldown > 0 ? (
+                           <span className="text-xs text-white px-1">{powerUpCooldown}s</span>
+                       ) : (
+                           <><span className="text-xs text-white">50</span><Gem className="w-3 h-3 ml-0.5 text-fuchsia-400"/></>
+                       )}
+                   </div>
                 ) : (
                    <span className="text-[10px] font-bold text-white/70 uppercase">Lvl 3</span>
                 )}
@@ -653,20 +690,32 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
 
              <button 
                onClick={() => handleHintClick()}
-               className={cn("flex items-center justify-center gap-1 px-3 py-1.5 rounded-full border-2 transition-all shadow-md group bg-black/30 border-black/50 hover:bg-black/40 relative")}
+               className={cn("flex items-center justify-center gap-1 px-3 py-1.5 rounded-full border-2 transition-all shadow-md group bg-black/30 border-black/50 hover:bg-black/40 relative", powerUpCooldown > 0 && "opacity-50 grayscale cursor-not-allowed")}
              >
                 <Lightbulb className={cn("w-4 h-4 drop-shadow-lg", hintCoords ? "text-yellow-400 fill-yellow-500/20 animate-pulse" : "text-gray-300")} />
-                <div className="flex items-center font-bold"><span className="text-xs text-white">50</span><Gem className="w-3 h-3 ml-0.5 text-fuchsia-400"/></div>
+                <div className="flex items-center font-bold">
+                    {powerUpCooldown > 0 ? (
+                        <span className="text-xs text-white px-1">{powerUpCooldown}s</span>
+                    ) : (
+                        <><span className="text-xs text-white">50</span><Gem className="w-3 h-3 ml-0.5 text-fuchsia-400"/></>
+                    )}
+                </div>
              </button>
 
              <button 
                onClick={() => currentLevel >= 2 ? (activePowerUp === 'replace' ? setActivePowerUp(null) : setActivePowerUp('replace')) : null}
-               className={cn("flex items-center justify-center gap-1 px-3 py-1.5 rounded-full border-2 transition-all shadow-md group relative", activePowerUp === 'replace' ? "bg-blue-500/40 border-blue-400 scale-[1.05]" : "bg-black/30 border-black/50 hover:bg-black/40", currentLevel < 2 && "opacity-50 grayscale")}
+               className={cn("flex items-center justify-center gap-1 px-3 py-1.5 rounded-full border-2 transition-all shadow-md group relative", activePowerUp === 'replace' ? "bg-blue-500/40 border-blue-400 scale-[1.05]" : "bg-black/30 border-black/50 hover:bg-black/40", currentLevel < 2 && "opacity-50 grayscale", powerUpCooldown > 0 && "opacity-50 grayscale cursor-not-allowed")}
              >
                 {currentLevel < 2 && <div className="absolute -top-1 -right-1 bg-blue-600 rounded-full p-0.5"><Lock className="w-3 h-3 text-white" /></div>}
                 <RefreshCw className={cn("w-4 h-4 drop-shadow-lg", activePowerUp === 'replace' ? "text-blue-400 animate-[spin_3s_linear_infinite]" : "text-gray-300")} />
                 {currentLevel >= 2 ? (
-                   <div className="flex items-center font-bold"><span className="text-xs text-white">50</span><Gem className="w-3 h-3 ml-0.5 text-fuchsia-400"/></div>
+                   <div className="flex items-center font-bold">
+                       {powerUpCooldown > 0 ? (
+                           <span className="text-xs text-white px-1">{powerUpCooldown}s</span>
+                       ) : (
+                           <><span className="text-xs text-white">50</span><Gem className="w-3 h-3 ml-0.5 text-fuchsia-400"/></>
+                       )}
+                   </div>
                 ) : (
                    <span className="text-[10px] font-bold text-white/70 uppercase">Lvl 2</span>
                 )}
@@ -674,12 +723,18 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
 
              <button 
                onClick={() => currentLevel >= 4 ? handleReverseClick() : null}
-               className={cn("flex items-center justify-center gap-1 px-3 py-1.5 rounded-full border-2 transition-all shadow-md group relative", currentLevel >= 4 ? "bg-black/30 border-black/50 hover:bg-black/40" : "opacity-50 grayscale")}
+               className={cn("flex items-center justify-center gap-1 px-3 py-1.5 rounded-full border-2 transition-all shadow-md group relative", currentLevel >= 4 ? "bg-black/30 border-black/50 hover:bg-black/40" : "opacity-50 grayscale", powerUpCooldown > 0 && "opacity-50 grayscale cursor-not-allowed")}
              >
                 {currentLevel < 4 && <div className="absolute -top-1 -right-1 bg-fuchsia-600 rounded-full p-0.5"><Lock className="w-3 h-3 text-white" /></div>}
                 <RotateCcw className={cn("w-4 h-4 drop-shadow-lg text-gray-300")} />
                 {currentLevel >= 4 ? (
-                  <div className="flex items-center font-bold"><span className="text-xs text-white">50</span><Gem className="w-3 h-3 ml-0.5 text-fuchsia-400"/></div>
+                  <div className="flex items-center font-bold">
+                      {powerUpCooldown > 0 ? (
+                          <span className="text-xs text-white px-1">{powerUpCooldown}s</span>
+                      ) : (
+                          <><span className="text-xs text-white">50</span><Gem className="w-3 h-3 ml-0.5 text-fuchsia-400"/></>
+                      )}
+                  </div>
                 ) : (
                   <span className="text-[10px] font-bold text-white/70 uppercase">Lvl 4</span>
                 )}
@@ -687,8 +742,8 @@ export const GameScreen: React.FC<Props> = ({ onOpenSettings, onGameOver, onGoHo
           </div>
 
           {/* Available Shapes Tray */}
-          <div className="w-full max-w-[400px] bg-[#1C2759] border border-[#2A3771] shadow-[0_10px_30px_rgba(0,0,0,0.5)] rounded-2xl p-4 mb-4">
-            <div className="flex justify-between items-center px-2 h-24 relative">
+          <div className="w-full max-w-[400px] bg-[#1C2759] border border-[#2A3771] shadow-[0_10px_30px_rgba(0,0,0,0.5)] rounded-2xl p-2 mb-2">
+            <div className="flex justify-between items-center px-2 h-20 relative">
               <AnimatePresence>
                 {availableShapes.map((shape, idx) => (
                   <motion.div

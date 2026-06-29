@@ -80,6 +80,7 @@ export const MenuScreen: React.FC<Props> = ({ onStart, onOpenSettings }) => {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
+      transition={{ duration: 0.2 }}
       className="flex-1 flex flex-col items-center justify-between p-6 relative w-full h-full overflow-y-auto"
     >
       <div className="absolute top-0 right-0 w-64 h-64 bg-blue-400 rounded-full mix-blend-multiply filter blur-3xl opacity-20 transform translate-x-1/2 -translate-y-1/2 pointer-events-none"></div>
@@ -87,9 +88,9 @@ export const MenuScreen: React.FC<Props> = ({ onStart, onOpenSettings }) => {
       
       <div className="flex-1 flex flex-col items-center justify-center w-full max-w-sm mt-8">
           <motion.div
-            initial={{ scale: 0.8, y: -50 }}
+            initial={{ scale: 0.8, y: -20 }}
             animate={{ scale: 1, y: 0 }}
-            transition={{ type: 'spring', bounce: 0.5 }}
+            transition={{ duration: 0.3, ease: 'easeOut' }}
             className="flex flex-col items-center mb-10 relative z-10"
           >
             <Crown className="w-16 h-16 text-yellow-400 mb-2 drop-shadow-[0_0_15px_rgba(250,204,21,0.6)]" />

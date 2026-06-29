@@ -27,6 +27,21 @@ export default function App() {
   const [incomingChallenge, setIncomingChallenge] = useState<any>(null);
 
   useEffect(() => {
+     const handleFirstInteraction = () => {
+        sound.unlockAudio();
+        document.removeEventListener('pointerdown', handleFirstInteraction);
+        document.removeEventListener('keydown', handleFirstInteraction);
+     };
+     document.addEventListener('pointerdown', handleFirstInteraction);
+     document.addEventListener('keydown', handleFirstInteraction);
+
+     const handleVisibilityChange = () => {
+        if (!document.hidden) {
+           sound.unlockAudio();
+        }
+     };
+     document.addEventListener('visibilitychange', handleVisibilityChange);
+
      let cls = '';
      const theme = safeStorage.getItem('block_blast_theme');
      if (theme && theme !== 'default') {

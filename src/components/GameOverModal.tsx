@@ -13,9 +13,9 @@ export const GameOverModal: React.FC<Props> = ({ score, isBest, onRestart }) => 
   return (
     <div className="absolute inset-0 bg-[#593CA5]/95 z-50 flex items-center justify-center p-6 flex-col">
       <motion.div 
-        initial={{ opacity: 0, scale: 0.5, y: -50 }}
+        initial={{ opacity: 0, scale: 0.9, y: -20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        transition={{ type: 'spring', bounce: 0.6 }}
+        transition={{ duration: 0.25, ease: 'easeOut' }}
         className="flex flex-col items-center"
       >
         <Crown className="w-20 h-20 text-yellow-400 drop-shadow-[0_0_20px_rgba(250,204,21,0.8)] mb-2" />
